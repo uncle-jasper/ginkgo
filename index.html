@@ -649,13 +649,11 @@ window.addEventListener('message', (e) => {
   }
 });
 
-// Clicking outside the editor (Ginkgo's own drawer/margins, not the topbar
-// action buttons) renders the open entry in formatted mode until the user
-// clicks back into it — the iframe's own click-into-preview handler covers
-// the reverse direction.
+// Clicking anywhere outside the editor itself (topbar included) renders the
+// open entry in formatted mode until the user clicks back into it — the
+// iframe's own click-into-preview handler covers the reverse direction.
 document.addEventListener('click', (e) => {
   if (!currentEntryId) return;
-  if (e.target.closest('#topbar')) return;
   if (e.target.closest('#editor-frame-wrap')) return;
   // Don't gate on currentEditorMode — it's only updated when a MODE_CHANGED
   // message round-trips back from the iframe (e.g. after clicking into the
