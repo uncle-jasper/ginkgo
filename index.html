@@ -619,8 +619,10 @@ const editorFrame = document.getElementById('editor-frame');
 let iframeReady = false;
 let pendingLoad = null;
 let currentEntryId = null;
+let currentEditorMode = null;
 
 function openInEditor(content, mode) {
+  currentEditorMode = mode;
   const msg = { type: 'LOAD_CONTENT', content, mode };
   if (iframeReady && editorFrame.contentWindow) {
     editorFrame.contentWindow.postMessage(msg, location.origin);
@@ -642,7 +644,21 @@ window.addEventListener('message', (e) => {
     applyTheme(msg.settings);
   } else if (msg.type === 'FOCUS_MODE_CHANGED') {
     setGinkgoFocus(!!msg.active);
+  } else if (msg.type === 'MODE_CHANGED') {
+    currentEditorMode = msg.mode;
   }
+});
+
+// Clicking outside the editor (Ginkgo's own drawer/margins, not the topbar
+// action buttons) renders the open entry in formatted mode until the user
+// clicks back into it — the iframe's own click-into-preview handler covers
+// the reverse direction.
+document.addEventListener('click', (e) => {
+  if (!currentEntryId || currentEditorMode !== 'write') return;
+  if (e.target.closest('#topbar')) return;
+  if (e.target.closest('#editor-frame-wrap')) return;
+  currentEditorMode = 'preview';
+  if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'SET_MODE', mode: 'preview' }, location.origin);
 });
 
 /* ════════════════════════════════════════════════════════════════════
@@ -914,7 +930,10 @@ function fetchWithTimeout(url, ms) {
 function getPosition(timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error('no geolocation')); return; }
-    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: timeoutMs, maximumAge: 5 * 60 * 1000 });
+    // enableHighAccuracy asks the OS for its best available fix (GPS chip,
+    // where present) rather than the coarser, faster network/WiFi-only
+    // estimate the browser otherwise defaults to.
+    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: timeoutMs, maximumAge: 5 * 60 * 1000, enableHighAccuracy: true });
   });
 }
 

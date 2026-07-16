@@ -384,6 +384,12 @@
     margin-bottom: 24px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   }
+  #preview p.preview-byline {
+    font-size: 0.78em;
+    color: var(--muted);
+    opacity: 0.75;
+    margin: -0.4em 0 1.2em 0;
+  }
 
   #split-divider {
     display: none;
@@ -2907,18 +2913,32 @@ function extractHeroImage(md) {
   return { content, heroSrc: m[2], heroAlt: m[1] };
 }
 
+// Pulls Ginkgo's auto-inserted dateline (timestamp, optionally followed by
+// · location · weather — see formatEntryTimestamp in ginkgo/index.html) out
+// of the document so it can be rendered smaller/subdued instead of as an
+// ordinary paragraph. Only matches that exact shape, so it can't misfire on
+// a line the user happened to write that merely starts with a date.
+function extractByline(md) {
+  const m = md.match(/^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?$/m);
+  if (!m) return { content: md, bylineText: null };
+  const content = (md.slice(0, m.index) + md.slice(m.index + m[0].length)).replace(/\n{3,}/g, '\n\n');
+  return { content, bylineText: m[0] };
+}
+
 function renderPreview() {
   const prev = document.getElementById('preview');
   if (!prev.classList.contains('visible')) return;
-  const { content, heroSrc, heroAlt } = extractHeroImage(getContent());
+  const { content: afterHero, heroSrc, heroAlt } = extractHeroImage(getContent());
+  const { content, bylineText } = extractByline(afterHero);
   // escapeHtml doesn't escape quotes (fine for text content, not for
   // attribute values), so quote-escape on top of it here.
   const escAttr = s => escapeHtml(s).replace(/"/g, '&quot;');
   const heroHtml = heroSrc
     ? `<img class="preview-hero-image" src="${escAttr(heroSrc)}" alt="${escAttr(heroAlt)}">`
     : '';
+  const bylineHtml = bylineText ? `<p class="preview-byline">${escapeHtml(bylineText)}</p>` : '';
   // parseMarkdown now handles annotation stripping internally
-  prev.innerHTML = '<div class="preview-inner">' + heroHtml + parseMarkdown(content) + '</div>';
+  prev.innerHTML = '<div class="preview-inner">' + heroHtml + bylineHtml + parseMarkdown(content) + '</div>';
 }
 
 // ── View mode ────────────────────────────────────────────────────────
@@ -2955,6 +2975,12 @@ function setMode(mode) {
   // entries) — that's ephemeral per-open state, not a real settings change,
   // so it must never persist into the shared tree-editor-settings blob.
   if (!EMBED_MODE) saveSettings();
+  // Lets Ginkgo's own chrome track write/preview state regardless of which
+  // side triggered the change (SET_MODE from Ginkgo, or clicking the
+  // rendered preview / a keyboard shortcut inside this iframe).
+  if (EMBED_MODE && window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'MODE_CHANGED', mode }, location.origin);
+  }
 }
 
 document.getElementById('mode-select').addEventListener('change', function() {
@@ -5063,6 +5089,10 @@ window.addEventListener('message', (e) => {
     } else if (msg.panel === 'shortcuts') {
       toggleKeysPanel();
     }
+  } else if (msg.type === 'SET_MODE') {
+    // Ginkgo asking us to switch view mode without reloading content —
+    // e.g. clicking outside the editor to read the formatted entry.
+    if (msg.mode) setMode(msg.mode);
   } else if (msg.type === 'TOGGLE_FOCUS') {
     if (focusActive) exitFocus(); else enterFocus();
   } else if (msg.type === 'UPDATE_DATELINE' && view) {
