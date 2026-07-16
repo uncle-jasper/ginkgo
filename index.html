@@ -535,7 +535,6 @@
     <input type="password" id="lock-pin-input" inputmode="numeric" placeholder="PIN" autocomplete="off">
     <div id="lock-error"></div>
     <button id="lock-unlock-btn">Unlock</button>
-    <button id="lock-webauthn-btn" style="display:none">Use Face ID / Touch ID</button>
   </div>
 </div>
 
@@ -547,7 +546,6 @@
       <div class="privacy-section-desc">A PIN gate on this device. Deters casual snooping — not real encryption.</div>
       <button id="btn-pin-setup">Set / change PIN</button>
       <button id="btn-pin-remove">Remove PIN</button>
-      <button id="btn-webauthn-setup">Enable Face ID / Touch ID</button>
     </div>
     <div class="privacy-section">
       <div class="privacy-section-title">Sync encryption</div>
@@ -1711,7 +1709,7 @@ function base64ToBytes(b64) {
   return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
-/* ── App lock (PIN + optional WebAuthn) ──────────────────────────── */
+/* ── App lock (PIN) ──────────────────────────────────────────────── */
 const PIN_ITERATIONS = 100000;
 
 async function hashPin(pin, saltBytes) {
@@ -1734,54 +1732,6 @@ async function verifyAppLockPin(pin) {
 async function hasAppLock() { return !!(await idbGet('sync_meta', 'app_lock')); }
 async function removeAppLock() { await idbDelete('sync_meta', 'app_lock'); }
 
-function base64urlToBuf(str) {
-  str = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (str.length % 4) str += '=';
-  return base64ToBytes(str).buffer;
-}
-
-async function registerWebAuthn() {
-  if (!window.PublicKeyCredential) { alert('Face ID / Touch ID isn\'t available in this browser.'); return false; }
-  try {
-    const cred = await navigator.credentials.create({
-      publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: 'Ginkgo' },
-        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'ginkgo-journal', displayName: 'Ginkgo Journal' },
-        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-        authenticatorSelection: { userVerification: 'required', authenticatorAttachment: 'platform' },
-        timeout: 60000,
-      },
-    });
-    if (!cred) return false;
-    const rec = (await idbGet('sync_meta', 'app_lock')) || { key: 'app_lock' };
-    rec.webauthnCredId = base64url(cred.rawId);
-    await idbPut('sync_meta', rec);
-    return true;
-  } catch (e) {
-    console.error('WebAuthn registration failed', e);
-    alert('Could not set up Face ID / Touch ID.');
-    return false;
-  }
-}
-async function tryWebAuthnUnlock() {
-  const rec = await idbGet('sync_meta', 'app_lock');
-  if (!rec || !rec.webauthnCredId || !window.PublicKeyCredential) return false;
-  try {
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{ id: base64urlToBuf(rec.webauthnCredId), type: 'public-key' }],
-        userVerification: 'required',
-        timeout: 60000,
-      },
-    });
-    return !!assertion;
-  } catch (e) {
-    return false;
-  }
-}
-
 let lastHiddenAt = null;
 const LOCK_IDLE_MS = 2 * 60 * 1000;
 
@@ -1789,9 +1739,6 @@ function showLockOverlay() {
   document.getElementById('lock-overlay').style.display = 'flex';
   document.getElementById('lock-pin-input').value = '';
   document.getElementById('lock-error').textContent = '';
-  idbGet('sync_meta', 'app_lock').then(rec => {
-    document.getElementById('lock-webauthn-btn').style.display = (rec && rec.webauthnCredId && window.PublicKeyCredential) ? '' : 'none';
-  });
   setTimeout(() => document.getElementById('lock-pin-input').focus(), 50);
 }
 function hideLockOverlay() { document.getElementById('lock-overlay').style.display = 'none'; }
@@ -1806,9 +1753,6 @@ async function attemptPinUnlock() {
 }
 document.getElementById('lock-unlock-btn').addEventListener('click', attemptPinUnlock);
 document.getElementById('lock-pin-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptPinUnlock(); });
-document.getElementById('lock-webauthn-btn').addEventListener('click', async () => {
-  if (await tryWebAuthnUnlock()) hideLockOverlay();
-});
 
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'hidden') {
@@ -1993,10 +1937,6 @@ document.getElementById('btn-pin-remove').addEventListener('click', async () => 
   await removeAppLock();
   refreshLockButtonVisibility();
   alert('App lock removed.');
-});
-document.getElementById('btn-webauthn-setup').addEventListener('click', async () => {
-  if (!(await hasAppLock())) { alert('Set a PIN first — Face ID / Touch ID is an additional unlock method on top of it.'); return; }
-  if (await registerWebAuthn()) alert('Face ID / Touch ID enabled.');
 });
 
 /* ── Sync encryption ──────────────────────────────────────────────── */
