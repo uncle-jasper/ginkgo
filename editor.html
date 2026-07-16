@@ -2341,7 +2341,7 @@ function buildExtensions() {
       }
     }),
     EditorView.updateListener.of(onEditorUpdate),
-    placeholder('Start writing… markdown is supported.'),
+    placeholder('click + above to start a new entry.'),
     EditorView.theme({
       '&': { background: 'transparent', height: 'auto' },
       '&.cm-focused': { outline: 'none' },
@@ -4975,6 +4975,11 @@ function init() {
   // Mount CM6
   initEditor(initialContent);
 
+  // No entry is open yet on first launch — block typing until Ginkgo loads
+  // one via LOAD_CONTENT (new or existing), so an idle editor can't invite
+  // keystrokes that would just be silently discarded (nothing to save to).
+  if (EMBED_MODE) view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(true)) });
+
   // Tell the parent we're ready to receive LOAD_CONTENT.
   if (window.parent && window.parent !== window) {
     embedReadySent = true;
@@ -5076,7 +5081,22 @@ window.addEventListener('message', (e) => {
   if (msg.type === 'LOAD_CONTENT') {
     setContent(msg.content || '');
     isDirty = false; // loading content isn't a user edit
+    view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(false)) });
     if (msg.mode) setMode(msg.mode);
+    // New entries land in write mode and should be immediately typeable —
+    // without this, keyboard focus stays on whatever Ginkgo control (e.g.
+    // the "+" button) was clicked to get here, so the first keystrokes
+    // silently go nowhere (space re-activates that button instead).
+    if (msg.mode === 'write') {
+      // A fresh entry's content is always the "## \n<dateline>\n\n"
+      // template — put the cursor right after "## " so typing immediately
+      // becomes the title, instead of landing at the document start.
+      const content = msg.content || '';
+      const cursorPos = content.startsWith('## ') ? 3 : 0;
+      view.dispatch({ selection: { anchor: cursorPos, head: cursorPos } });
+      window.focus();
+      view.focus();
+    }
   } else if (msg.type === 'INSERT_AT_CURSOR' && view) {
     view.dispatch(view.state.replaceSelection(msg.text || ''));
     view.focus();

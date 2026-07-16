@@ -330,7 +330,7 @@
   #btn-about-close { align-self: center; padding: 7px 16px; border: 1px solid var(--border); font-size: 12px; margin-top: 6px; }
 </style>
 </head>
-<body>
+<body class="drawer-open">
 <div id="app">
   <div id="topbar">
     <div id="more-menu-wrap">
@@ -355,7 +355,7 @@
       <iframe id="editor-frame" src="editor.html" allow="fullscreen"></iframe>
     </div>
     <div id="drawer-backdrop"></div>
-    <button id="drawer-handle" title="Journal"><span id="drawer-handle-chevron">‹</span></button>
+    <button id="drawer-handle" title="Journal"><span id="drawer-handle-chevron">›</span></button>
     <div id="drawer">
       <div id="drawer-header">
         <button id="btn-view-journal" class="active">journal</button>
@@ -654,9 +654,14 @@ window.addEventListener('message', (e) => {
 // clicks back into it — the iframe's own click-into-preview handler covers
 // the reverse direction.
 document.addEventListener('click', (e) => {
-  if (!currentEntryId || currentEditorMode !== 'write') return;
+  if (!currentEntryId) return;
   if (e.target.closest('#topbar')) return;
   if (e.target.closest('#editor-frame-wrap')) return;
+  // Don't gate on currentEditorMode — it's only updated when a MODE_CHANGED
+  // message round-trips back from the iframe (e.g. after clicking into the
+  // preview to resume editing), so it can briefly be stale. Sending SET_MODE
+  // unconditionally is harmless (setMode() is a cheap no-op if already in
+  // preview) and avoids clicks silently doing nothing during that window.
   currentEditorMode = 'preview';
   if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'SET_MODE', mode: 'preview' }, location.origin);
 });
@@ -940,7 +945,11 @@ function getPosition(timeoutMs) {
 async function reverseGeocode(lat, lon) {
   const res = await fetchWithTimeout(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`, 5000);
   const data = await res.json();
-  const city = data.city || data.locality || data.principalSubdivision;
+  // locality is the precise city/town (e.g. "Santa Clarita"); BigDataCloud's
+  // own "city" field is a coarser metro-area anchor (e.g. "Los Angeles")
+  // that can be wrong even when the coordinates themselves are accurate —
+  // prefer the more specific field.
+  const city = data.locality || data.city || data.principalSubdivision;
   const region = data.principalSubdivisionCode ? data.principalSubdivisionCode.split('-').pop() : data.countryCode;
   return city ? (region ? `${city}, ${region}` : city) : null;
 }
