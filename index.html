@@ -429,6 +429,7 @@
       <button id="btn-encryption-enable">Enable sync encryption</button>
       <button id="btn-encryption-unlock">Enter passphrase this session</button>
       <button id="btn-encryption-disable">Disable sync encryption</button>
+      <button id="btn-decrypt-export-all">Decrypt &amp; export everything (.zip)</button>
     </div>
     <button id="btn-privacy-close">Close</button>
   </div>
@@ -1775,9 +1776,68 @@ async function disableSyncEncryption() {
   alert('Sync encryption disabled.');
 }
 
+// Pulls every entry directly from Dropbox (not from local storage) and
+// decrypts it, so a full plaintext copy of the journal can be produced
+// independent of what's on this device — e.g. moving to another tool
+// entirely, or recovering onto a device that's never synced before.
+async function decryptAndExportFromDropbox() {
+  if (!(await idbGet('sync_meta', 'dropbox_auth'))) { alert('Connect Dropbox first.'); return; }
+  const settings = await getSyncEncryptionSettings();
+  if (settings.enabled && !sessionEncryptionKey) {
+    const passphrase = prompt('Enter your sync passphrase to decrypt entries:');
+    if (!passphrase) return;
+    sessionEncryptionKey = await deriveEncryptionKey(passphrase, base64ToBytes(settings.saltB64));
+  }
+
+  let paths = [];
+  try {
+    let cursor = null;
+    do {
+      const res = await dbxListFolder(cursor);
+      for (const entry of res.entries) {
+        if (entry['.tag'] === 'file' && entry.path_lower.endsWith('.md')) paths.push(entry.path_lower);
+      }
+      cursor = res.has_more ? res.cursor : null;
+    } while (cursor);
+  } catch (e) {
+    alert('Could not list entries from Dropbox: ' + e.message);
+    return;
+  }
+  if (!paths.length) { alert('No entries found in Dropbox.'); return; }
+
+  const zipFiles = [];
+  let failures = 0;
+  for (const path of paths) {
+    try {
+      const raw = await dbxDownload(path);
+      const parsed = parseFileContent(raw);
+      const plainContent = await maybeDecryptFromDownload(parsed.content);
+      const meta = { id: parsed.id, createdAt: parsed.createdAt, updatedAt: parsed.updatedAt };
+      zipFiles.push({ name: path.replace(/^\//, ''), data: buildFileContent(meta, plainContent) });
+    } catch (e) {
+      failures++;
+    }
+  }
+
+  const zipBytes = buildZip(zipFiles);
+  const blob = new Blob([zipBytes], { type: 'application/zip' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ginkgo-decrypted-export-${dateKey(new Date())}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  alert(`Exported ${zipFiles.length} entr${zipFiles.length === 1 ? 'y' : 'ies'} as plain text.` +
+    (failures ? ` ${failures} failed (wrong passphrase, or file not readable).` : ''));
+}
+
 document.getElementById('btn-encryption-enable').addEventListener('click', enableSyncEncryption);
 document.getElementById('btn-encryption-unlock').addEventListener('click', enterEncryptionPassphraseThisSession);
 document.getElementById('btn-encryption-disable').addEventListener('click', disableSyncEncryption);
+document.getElementById('btn-decrypt-export-all').addEventListener('click', decryptAndExportFromDropbox);
 
 /* ════════════════════════════════════════════════════════════════════
    Dropbox cloud sync
@@ -1966,7 +2026,7 @@ async function dbxListFolder(cursor) {
 /* ── File format: a small frontmatter block + the raw markdown body ── */
 function remotePathFor(meta) {
   const d = new Date(meta.createdAt);
-  return `/${d.getFullYear()}/${dateKey(d)}-${meta.id}.md`;
+  return `/${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${dateKey(d)}-${meta.id}.md`;
 }
 function buildFileContent(meta, content) {
   return `---\nid: ${meta.id}\ncreatedAt: ${meta.createdAt}\nupdatedAt: ${meta.updatedAt}\n---\n${content}`;
