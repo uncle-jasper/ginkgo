@@ -1,4 +1,4 @@
-const CACHE = 'ginkgo-v1';
+const CACHE = 'ginkgo-v2';
 const ASSETS = [
   '/ginkgo/',
   '/ginkgo/index.html',
@@ -6,6 +6,7 @@ const ASSETS = [
   '/ginkgo/manifest.json',
   '/ginkgo/icon-192.png',
   '/ginkgo/icon-512.png',
+  '/ginkgo/plant.png',
 ];
 
 self.addEventListener('install', e => {
