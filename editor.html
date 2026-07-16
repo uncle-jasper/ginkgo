@@ -911,6 +911,36 @@
   }
   #annotation-popup.visible { opacity: 1; }
 
+  /* ── Image chip & popup ── */
+  .image-chip {
+    display: inline-block;
+    line-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px;
+    cursor: pointer;
+    vertical-align: middle;
+    opacity: 0.7;
+    transition: opacity 0.15s, border-color 0.15s;
+  }
+  .image-chip:hover { opacity: 1; border-color: var(--muted); }
+  .image-chip img { display: block; width: 28px; height: 28px; object-fit: cover; border-radius: 2px; }
+  .cm-image-expanded { background: rgba(200,160,0,0.12); border-radius: 3px; outline: 1px dashed var(--border); }
+  #image-hover-popup {
+    position: fixed;
+    z-index: 4000;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    box-shadow: 0 3px 14px rgba(0,0,0,0.2);
+  }
+  #image-hover-popup.visible { opacity: 1; }
+  #image-hover-popup img { display: block; max-width: 280px; max-height: 280px; border-radius: 4px; }
+
   /* ── Split save button ── */
   .split-btn { display: flex; align-items: stretch; position: relative; }
   .split-btn #btn-save { border-radius: 5px 0 0 5px; }
@@ -1002,7 +1032,7 @@
 
   /* ── Print / PDF export ── */
   @media print {
-    #header, #statusbar, #sidebar, #split-divider, #word-menu, #annotation-popup,
+    #header, #statusbar, #sidebar, #split-divider, #word-menu, #annotation-popup, #image-hover-popup,
     #settings-overlay, #about-overlay, #keys-overlay, #wp-confirm-overlay,
     #goal-prompt-overlay, .split-dropdown { display: none !important; }
     body { background: #fff; }
@@ -1474,6 +1504,7 @@
 
 <!-- Annotation hover popup -->
 <div id="annotation-popup"></div>
+<div id="image-hover-popup"><img id="image-hover-popup-img" alt=""></div>
 
 <!-- Word count goal prompt -->
 <div id="goal-prompt-overlay" style="display:none">
@@ -1920,6 +1951,108 @@ const annotationPlugin = ViewPlugin.fromClass(class {
   }
 }, { decorations: v => v.decorations });
 
+// ── Image chips ──────────────────────────────────────────────────────
+// Attach-photo inserts full data: URIs (often tens of thousands of chars)
+// directly into the document so export/Dropbox sync/import all keep working
+// unchanged — but that makes write mode nearly unusable (one "line" that
+// wraps for hundreds of screen-lines). Mirrors the annotation chip pattern
+// above: collapse ![alt](url) into a small thumbnail whenever the cursor
+// isn't inside it: the underlying text is completely untouched.
+const IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+
+const toggleImageExpanded = StateEffect.define();
+
+const imageExpandedField = StateField.define({
+  create() { return new Set(); },
+  update(value, tr) {
+    let next = value;
+
+    for (const e of tr.effects) {
+      if (e.is(toggleImageExpanded)) {
+        next = new Set(next);
+        if (next.has(e.value)) next.delete(e.value);
+        else next.add(e.value);
+      }
+    }
+
+    if (tr.docChanged && next.size > 0) {
+      const mapped = new Set();
+      for (const pos of next) mapped.add(tr.changes.mapPos(pos));
+      next = mapped;
+    }
+
+    if (tr.selection && next.size > 0) {
+      const sel = tr.newSelection.main;
+      const text = tr.newDoc.toString();
+      const toKeep = new Set();
+      for (const from of next) {
+        const re = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        re.lastIndex = from;
+        const m = re.exec(text);
+        if (m && m.index === from) {
+          const to = from + m[0].length;
+          if (sel.from <= to && sel.to >= from) toKeep.add(from);
+        }
+      }
+      next = toKeep;
+    }
+
+    return next;
+  }
+});
+
+class ImageChipWidget extends WidgetType {
+  constructor(from, url, alt) {
+    super();
+    this.from = from;
+    this.url = url;
+    this.alt = alt;
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'image-chip';
+    span.dataset.imageFrom = this.from;
+    span.title = 'click to edit · hover to preview';
+    const img = document.createElement('img');
+    img.src = this.url;
+    img.alt = this.alt;
+    span.appendChild(img);
+    return span;
+  }
+  eq(other) { return other.from === this.from && other.url === this.url; }
+  ignoreEvent() { return false; }
+}
+
+const imagePlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = this._build(view); }
+  update(u) {
+    if (u.docChanged || u.viewportChanged || u.selectionSet ||
+        u.state.field(imageExpandedField) !== u.startState.field(imageExpandedField))
+      this.decorations = this._build(u.view);
+  }
+  _build(view) {
+    const expanded = view.state.field(imageExpandedField);
+    const sel = view.state.selection.main;
+    const text = view.state.doc.toString();
+    const builder = new RangeSetBuilder();
+    IMAGE_RE.lastIndex = 0;
+    let m;
+    while ((m = IMAGE_RE.exec(text)) !== null) {
+      const from = m.index;
+      const to = from + m[0].length;
+      const cursorInside = sel.from < to && sel.to > from;
+      if (expanded.has(from)) {
+        builder.add(from, to, Decoration.mark({ class: 'cm-image-expanded' }));
+      } else if (!cursorInside) {
+        builder.add(from, to, Decoration.replace({
+          widget: new ImageChipWidget(from, m[2], m[1]),
+        }));
+      }
+    }
+    return builder.finish();
+  }
+}, { decorations: v => v.decorations });
+
 function insertAnnotation() {
   if (!view) return;
   const { state } = view;
@@ -1976,6 +2109,46 @@ document.addEventListener('mouseout', e => {
   if (!e.target.closest('.annotation-chip')) {
     clearTimeout(annotPopupTimer);
     annotPopup.classList.remove('visible');
+  }
+});
+
+// Image chip hover popup — same pattern as the annotation popup above, but
+// shows an enlarged preview of the photo instead of note text.
+const imagePopup    = document.getElementById('image-hover-popup');
+const imagePopupImg = document.getElementById('image-hover-popup-img');
+let imagePopupTimer = null;
+
+document.addEventListener('mouseover', e => {
+  const chip = e.target.closest('.image-chip');
+  if (!chip) {
+    clearTimeout(imagePopupTimer);
+    imagePopup.classList.remove('visible');
+    return;
+  }
+  clearTimeout(imagePopupTimer);
+  imagePopupTimer = setTimeout(() => {
+    const from = parseInt(chip.dataset.imageFrom);
+    if (!view || isNaN(from)) return;
+    const text = view.state.doc.toString();
+    IMAGE_RE.lastIndex = from;
+    const m = IMAGE_RE.exec(text);
+    if (!m || m.index !== from) return;
+    imagePopupImg.src = m[2];
+    imagePopupImg.alt = m[1];
+    const rect = chip.getBoundingClientRect();
+    imagePopup.style.left = rect.left + 'px';
+    imagePopup.style.top  = (rect.top - 8) + 'px';
+    imagePopup.classList.add('visible');
+    const pr = imagePopup.getBoundingClientRect();
+    if (pr.bottom > rect.top) imagePopup.style.top = (rect.bottom + 4) + 'px';
+    if (pr.right > window.innerWidth - 8) imagePopup.style.left = (window.innerWidth - pr.width - 8) + 'px';
+  }, 200);
+});
+
+document.addEventListener('mouseout', e => {
+  if (!e.target.closest('.image-chip')) {
+    clearTimeout(imagePopupTimer);
+    imagePopup.classList.remove('visible');
   }
 });
 
@@ -2219,6 +2392,8 @@ function buildExtensions() {
     linkDimmingPlugin,
     annotationExpandedField,
     annotationPlugin,
+    imageExpandedField,
+    imagePlugin,
     zenModePlugin,
     inlineFormattingPlugin,
     lineDecoPlugin,
@@ -2327,6 +2502,14 @@ function buildExtensions() {
           const from = parseInt(chip.dataset.annotationFrom);
           if (!isNaN(from)) {
             view.dispatch({ effects: toggleAnnotation.of(from) });
+            return true;
+          }
+        }
+        const imgChip = event.target.closest('.image-chip');
+        if (imgChip) {
+          const from = parseInt(imgChip.dataset.imageFrom);
+          if (!isNaN(from)) {
+            view.dispatch({ effects: toggleImageExpanded.of(from) });
             return true;
           }
         }
