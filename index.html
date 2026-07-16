@@ -349,6 +349,7 @@
     <div id="topbar-title">Ginkgo</div>
     <span id="sync-status"></span>
     <button id="btn-focus" title="Focus mode">⛶</button>
+    <button id="btn-lock-now" title="Lock now" style="display:none">🔒</button>
     <button id="btn-attach-photo" title="Attach photo">📷</button>
     <button id="btn-new-entry" title="New entry">＋</button>
   </div>
@@ -1634,12 +1635,19 @@ document.getElementById('more-about').addEventListener('click', () => {
   closeMoreMenu();
   document.getElementById('about-overlay').style.display = 'flex';
 });
+function refreshLockButtonVisibility() {
+  hasAppLock().then(has => {
+    document.getElementById('btn-lock-now').style.display = has ? '' : 'none';
+  });
+}
+document.getElementById('btn-lock-now').addEventListener('click', showLockOverlay);
 document.getElementById('btn-pin-setup').addEventListener('click', async () => {
   const pin = prompt('Set a PIN to lock Ginkgo (4-6 digits):');
   if (!pin) return;
   if (!/^\d{4,6}$/.test(pin)) { alert('PIN must be 4-6 digits.'); return; }
   if (prompt('Confirm PIN:') !== pin) { alert('PINs did not match — nothing changed.'); return; }
   await setAppLockPin(pin);
+  refreshLockButtonVisibility();
   alert('App lock PIN set.');
 });
 document.getElementById('btn-pin-remove').addEventListener('click', async () => {
@@ -1648,6 +1656,7 @@ document.getElementById('btn-pin-remove').addEventListener('click', async () => 
   if (pin === null) return;
   if (!(await verifyAppLockPin(pin))) { alert('Incorrect PIN — not removed.'); return; }
   await removeAppLock();
+  refreshLockButtonVisibility();
   alert('App lock removed.');
 });
 document.getElementById('btn-webauthn-setup').addEventListener('click', async () => {
@@ -2398,6 +2407,7 @@ window.addEventListener('resize', syncTopbarHeight);
 (async function boot() {
   syncTopbarHeight();
   if (await hasAppLock()) showLockOverlay();
+  refreshLockButtonVisibility();
   await renderCalendar();
   await renderInitialList();
   if (typeof renderOnThisDay === 'function') renderOnThisDay();
