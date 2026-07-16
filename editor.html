@@ -5141,6 +5141,13 @@ document.getElementById('preview').addEventListener('click', () => {
   }
 });
 
+// Click the status bar to jump the other way (write -> preview). It sits
+// outside Ginkgo's own chrome, inside this iframe, so Ginkgo's parent-level
+// click-outside listener never sees these clicks — this covers it locally.
+document.getElementById('statusbar').addEventListener('click', () => {
+  if (EMBED_MODE && currentMode === 'write') setMode('preview');
+});
+
 init();
 </script>
 </body>
