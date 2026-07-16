@@ -1,0 +1,2408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ginkgo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#f5f0e8">
+<style>
+  :root {
+    --bg: #f5f0e8;
+    --surface: #ede8de;
+    --text: #2c2416;
+    --accent: #8b6e4e;
+    --muted: #a89880;
+    --border: #d4c8b4;
+    --ui-font: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: var(--ui-font);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select {
+    font-family: var(--ui-font);
+    color: var(--text);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--border); border-color: var(--muted); }
+  button.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  input[type="text"], input[type="password"], input[type="search"] {
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    outline: none;
+  }
+  input[type="text"]:focus, input[type="password"]:focus, input[type="search"]:focus { border-color: var(--accent); }
+
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* ── Top bar ─────────────────────────────────────────────────────── */
+  #topbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+    z-index: 20;
+    position: relative;
+  }
+  #topbar button { font-size: 16px; padding: 5px 9px; }
+  #topbar-title { font-weight: 600; letter-spacing: 0.02em; margin-right: auto; }
+
+  /* ── "More" menu (repurposed hamburger): style/settings/shortcuts/privacy/about ── */
+  #more-menu-wrap { position: relative; }
+  .custom-dropdown-menu {
+    position: absolute; top: calc(100% + 4px); left: 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 0; z-index: 50; min-width: 170px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .custom-dropdown-item {
+    padding: 7px 12px; font-size: 12px; color: var(--text); cursor: pointer; white-space: nowrap;
+  }
+  .custom-dropdown-item:hover { background: var(--border); }
+
+  #sync-status {
+    font-size: 11px; color: var(--muted); white-space: nowrap;
+    padding: 4px 8px; cursor: default;
+  }
+  #sync-status.error { color: #b04040; }
+
+  /* ── CRT mode — mirrors the editor's own terminal-theme CRT effect so
+     the whole app reads as one system, not just the writing area. Scoped
+     to [data-theme="terminal"] exactly like the editor's own CSS, since
+     crt-on can stay "armed" after switching to a different theme (matches
+     Tree's existing behavior — the checkbox state persists, only the
+     visual effect is theme-gated) and must never bleed into other themes.
+     The scanline/vignette overlays are scoped to #topbar and #drawer only
+     (not a full-viewport overlay) since the iframe already renders its
+     own identical effect internally — a viewport-wide overlay here would
+     double up and darken the editor area. text-shadow is inherited, so
+     the glow reaches every text element in Ginkgo's chrome for free. ── */
+  @keyframes ginkgo-crt-flicker {
+    0%  { opacity: 1; } 92% { opacity: 1; } 93% { opacity: 0.93; }
+    94% { opacity: 1; } 96% { opacity: 0.96; } 97% { opacity: 1; }
+    99% { opacity: 0.97; } 100% { opacity: 1; }
+  }
+  body[data-theme="terminal"].crt-on { animation: ginkgo-crt-flicker 8s infinite; text-shadow: 0 0 8px rgba(51,255,51,0.35); }
+  body[data-theme="terminal"].crt-on.amber-crt { text-shadow: 0 0 8px rgba(255,176,0,0.35); }
+  body[data-theme="terminal"].crt-on #topbar::after, body[data-theme="terminal"].crt-on #drawer::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 1px, rgba(0,0,0,0.25) 1px, rgba(0,0,0,0.25) 3px);
+    pointer-events: none; z-index: 40;
+  }
+  body[data-theme="terminal"].crt-on #drawer::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.55) 100%);
+    pointer-events: none; z-index: 39;
+  }
+
+  /* ── Focus mode ──────────────────────────────────────────────────── */
+  body.ginkgo-focus #topbar { display: none; }
+  #focus-exit {
+    display: none;
+    position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; z-index: 95;
+    width: 28px; height: 28px; border-radius: 50%;
+    align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    font-size: 13px; opacity: 0.2; transition: opacity 0.15s; cursor: pointer;
+  }
+  #focus-exit:hover { opacity: 1; }
+  body.ginkgo-focus #focus-exit { display: flex; }
+
+  /* ── Editor area + drawer: a push layout, not an overlay. The editor
+     visibly narrows to make room for the drawer rather than being
+     covered by it. ── */
+  #content-row { display: flex; flex-direction: row; flex: 1; min-height: 0; }
+  #editor-frame-wrap { flex: 1; min-height: 0; min-width: 0; position: relative; }
+  #editor-frame { width: 100%; height: 100%; border: none; display: block; background: var(--bg); }
+
+  /* Edge handle — mirrors Tree's own #sidebar-toggle strip: a slim,
+     low-opacity vertical strip that always sits exactly at the boundary
+     between the editor and the drawer, whatever the drawer's current
+     width, since it's an ordinary flex sibling between them. */
+  #drawer-handle {
+    width: 16px; flex-shrink: 0; border-radius: 0;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: transparent; border: none;
+    border-left: 1px solid var(--border);
+    color: var(--muted); font-size: 11px; opacity: 0.3;
+    transition: opacity 0.15s, border-color 0.25s;
+    padding: 0;
+  }
+  #drawer-handle:hover { opacity: 1; background: transparent; }
+
+  #drawer {
+    width: 0; flex-shrink: 0; overflow: hidden;
+    background: var(--surface);
+    border-left: none;
+    display: flex; flex-direction: column;
+    transition: width 0.28s ease;
+    padding-bottom: env(safe-area-inset-bottom);
+    position: relative;
+  }
+  body.drawer-open #drawer { width: min(380px, 40vw); border-left: 1px solid var(--border); }
+
+  /* Narrow-viewport fallback: not enough room for editor + drawer side by
+     side, so the drawer reverts to a classic overlay with a dimming
+     backdrop, opened via a fixed-position version of the same handle. */
+  #drawer-backdrop { display: none; }
+  @media (max-width: 700px) {
+    #drawer-backdrop {
+      display: block; position: fixed; top: var(--topbar-h, 48px); right: 0; bottom: 0; left: 0;
+      background: rgba(0,0,0,0.25); opacity: 0; pointer-events: none; transition: opacity 0.25s;
+      z-index: 14;
+    }
+    body.drawer-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
+    #content-row { position: relative; }
+    #drawer {
+      position: fixed; top: var(--topbar-h, 48px); right: 0; bottom: 0;
+      width: min(380px, 92vw) !important;
+      transform: translateX(100%);
+      transition: transform 0.28s ease;
+      z-index: 15;
+    }
+    body.drawer-open #drawer { border-left: 1px solid var(--border); transform: translateX(0); }
+    #drawer-handle {
+      position: fixed; top: 50%; right: 0; transform: translateY(-50%);
+      z-index: 16; transition: right 0.28s ease, opacity 0.15s, border-color 0.25s;
+    }
+    body.drawer-open #drawer-handle { right: min(380px, 92vw); }
+  }
+
+  #drawer-header {
+    display: flex; gap: 6px; padding: 10px 10px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  #drawer-header button { flex: 1; padding: 7px; font-size: 12px; }
+
+  #drawer-search-row { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #drawer-search-row input { flex: 1; font-size: 13px; }
+  #drawer-search-row button { font-size: 12px; padding: 6px 8px; }
+
+  /* drawer-body holds the calendar pinned above an independently-scrolling
+     entry list — the calendar must never scroll away with the list. */
+  #drawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  #journal-view, #search-view, #trash-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #on-this-day-wrap, #calendar { flex-shrink: 0; }
+  #entry-list, #search-view, #trash-view { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ── On this day ─────────────────────────────────────────────────── */
+  #on-this-day-wrap { padding: 0 10px; }
+  .otd-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; margin: 8px 0; font-size: 12px; cursor: pointer;
+    position: relative;
+  }
+  .otd-card .otd-years { color: var(--muted); margin-bottom: 2px; }
+  .otd-card .otd-title { font-weight: 600; }
+  .otd-dismiss {
+    position: absolute; top: 4px; right: 6px; font-size: 11px;
+    color: var(--muted); background: none; border: none; padding: 2px 4px;
+  }
+
+  /* ── Calendar ────────────────────────────────────────────────────── */
+  #calendar { padding: 6px 10px 10px; border-bottom: 1px solid var(--border); }
+  #cal-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 8px; }
+  #cal-header button { font-size: 14px; padding: 3px 9px; }
+  #cal-label { font-size: 13px; font-weight: 600; }
+  #cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-dow { text-align: center; font-size: 10px; color: var(--muted); padding: 2px 0; }
+  .cal-cell {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; font-size: 12px; border-radius: 6px; cursor: pointer;
+    position: relative;
+  }
+  .cal-cell:hover { background: var(--border); }
+  .cal-cell.empty { cursor: default; }
+  .cal-cell.empty:hover { background: none; }
+  .cal-cell.today span { font-weight: 700; text-decoration: underline; }
+  .cal-cell .dot {
+    position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* ── Entry list ──────────────────────────────────────────────────── */
+  #entry-list, #trash-list, #search-results { padding: 4px 0 24px; }
+  .month-marker {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); padding: 12px 10px 4px;
+  }
+  .entry-row {
+    display: flex; gap: 10px; padding: 8px 10px; cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  .entry-row:hover { background: var(--bg); }
+  .entry-thumb {
+    width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
+    background: var(--border);
+  }
+  .entry-thumb.placeholder { visibility: hidden; }
+  .entry-row-text { min-width: 0; flex: 1; }
+  .entry-row-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entry-row-meta { font-size: 10px; color: var(--muted); margin: 1px 0; }
+  .entry-row-preview { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entry-row.conflict .entry-row-title::after { content: ' (conflict copy)'; color: #b04040; font-weight: 400; }
+  .entry-row-delete {
+    align-self: center; font-size: 13px; padding: 4px 6px; opacity: 0.4; flex-shrink: 0;
+  }
+  .entry-row-delete:hover { opacity: 1; background: var(--border); }
+
+  #empty-hint { padding: 20px 14px; font-size: 12px; color: var(--muted); text-align: center; }
+
+  /* ── Trash ───────────────────────────────────────────────────────── */
+  .trash-row-actions { display: flex; align-items: center; gap: 6px; padding: 0 10px; }
+  .trash-row-actions button { font-size: 11px; padding: 4px 8px; }
+
+  #list-bottom-sentinel { height: 1px; }
+
+  /* ── Drawer footer (export/import) ──────────────────────────────── */
+  #drawer-footer {
+    display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); flex-shrink: 0;
+  }
+  #drawer-footer button { flex: 1; font-size: 11px; padding: 6px; border: 1px solid var(--border); }
+
+  /* ── Install hint (iOS) ──────────────────────────────────────────── */
+  #install-hint {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 80;
+    background: var(--accent); color: var(--bg); font-size: 12px;
+    padding: 10px 14px; padding-bottom: max(10px, env(safe-area-inset-bottom));
+    display: flex; align-items: center; gap: 10px;
+  }
+  #install-hint-dismiss { background: transparent; border: none; color: var(--bg); font-size: 16px; margin-left: auto; padding: 0 4px; }
+
+  /* ── New entry FAB ───────────────────────────────────────────────── */
+  #btn-new-entry { font-size: 20px; line-height: 1; padding: 4px 11px; }
+
+  /* ── Lock overlay ────────────────────────────────────────────────── */
+  #lock-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: var(--bg); align-items: center; justify-content: center;
+  }
+  #lock-box { display: flex; flex-direction: column; gap: 10px; width: min(260px, 84vw); text-align: center; }
+  #lock-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  #lock-pin-input { text-align: center; font-size: 18px; letter-spacing: 0.3em; padding: 10px; }
+  #lock-error { color: #b04040; font-size: 12px; min-height: 16px; }
+  #lock-box button { padding: 9px; font-size: 13px; border: 1px solid var(--border); }
+
+  /* ── Privacy panel ───────────────────────────────────────────────── */
+  #privacy-overlay {
+    position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.35);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #privacy-box {
+    width: min(340px, 88vw); max-height: 84vh; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  }
+  #privacy-title { font-size: 15px; font-weight: 600; }
+  .privacy-section { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .privacy-section:first-of-type { border-top: none; padding-top: 0; }
+  .privacy-section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .privacy-section-desc { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .privacy-section button { text-align: left; padding: 7px 9px; font-size: 12px; border: 1px solid var(--border); margin-bottom: 4px; }
+  #btn-privacy-close { align-self: center; padding: 7px 16px; border: 1px solid var(--border); font-size: 12px; margin-top: 4px; }
+
+  /* ── About panel ─────────────────────────────────────────────────── */
+  #about-overlay {
+    position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.35);
+    display: none; align-items: center; justify-content: center;
+  }
+  #about-box {
+    width: min(300px, 88vw);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; text-align: center;
+    display: flex; flex-direction: column; gap: 8px; align-items: center;
+  }
+  #about-title { font-size: 17px; font-weight: 600; }
+  #about-version { font-size: 11px; color: var(--muted); }
+  #about-desc { font-size: 12px; color: var(--text); line-height: 1.5; margin: 4px 0; }
+  #btn-about-close { align-self: center; padding: 7px 16px; border: 1px solid var(--border); font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div id="more-menu-wrap">
+      <button id="btn-more-menu" title="Menu">☰</button>
+      <div id="more-menu" class="custom-dropdown-menu" style="display:none">
+        <div class="custom-dropdown-item" id="more-style">style</div>
+        <div class="custom-dropdown-item" id="more-settings">settings</div>
+        <div class="custom-dropdown-item" id="more-shortcuts">keyboard shortcuts</div>
+        <div class="custom-dropdown-item" id="more-export-entry">export this entry (.md)</div>
+        <div class="custom-dropdown-item" id="more-privacy">privacy &amp; lock</div>
+        <div class="custom-dropdown-item" id="more-about">about ginkgo</div>
+      </div>
+    </div>
+    <div id="topbar-title">Ginkgo</div>
+    <span id="sync-status"></span>
+    <button id="btn-focus" title="Focus mode">⛶</button>
+    <button id="btn-attach-photo" title="Attach photo">📷</button>
+    <button id="btn-new-entry" title="New entry">＋</button>
+  </div>
+  <div id="content-row">
+    <div id="editor-frame-wrap">
+      <iframe id="editor-frame" src="editor.html" allow="fullscreen"></iframe>
+    </div>
+    <div id="drawer-backdrop"></div>
+    <button id="drawer-handle" title="Journal"><span id="drawer-handle-chevron">‹</span></button>
+    <div id="drawer">
+      <div id="drawer-header">
+        <button id="btn-view-journal" class="active">journal</button>
+        <button id="btn-view-search">search</button>
+        <button id="btn-view-trash">trash</button>
+      </div>
+      <div id="drawer-search-row" style="display:none">
+        <input type="text" id="search-input" placeholder="search entries…" autocomplete="off">
+      </div>
+      <div id="drawer-body">
+        <div id="journal-view">
+          <div id="on-this-day-wrap"></div>
+          <div id="calendar">
+            <div id="cal-header">
+              <button id="cal-prev">‹</button>
+              <span id="cal-label"></span>
+              <button id="cal-next">›</button>
+            </div>
+            <div id="cal-grid"></div>
+          </div>
+          <div id="entry-list">
+            <div id="list-bottom-sentinel"></div>
+          </div>
+        </div>
+        <div id="search-view" style="display:none">
+          <div id="search-results"></div>
+        </div>
+        <div id="trash-view" style="display:none">
+          <div id="trash-list"></div>
+        </div>
+      </div>
+      <div id="drawer-footer">
+        <button id="btn-export-zip">export all (.zip)</button>
+        <button id="btn-import-files">import .md files</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button id="focus-exit" title="Exit focus mode">×</button>
+
+<input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="import-input" accept=".md" multiple style="display:none">
+
+<div id="lock-overlay">
+  <div id="lock-box">
+    <div id="lock-title">Ginkgo is locked</div>
+    <input type="password" id="lock-pin-input" inputmode="numeric" placeholder="PIN" autocomplete="off">
+    <div id="lock-error"></div>
+    <button id="lock-unlock-btn">Unlock</button>
+    <button id="lock-webauthn-btn" style="display:none">Use Face ID / Touch ID</button>
+  </div>
+</div>
+
+<div id="privacy-overlay" style="display:none">
+  <div id="privacy-box">
+    <div id="privacy-title">Privacy</div>
+    <div class="privacy-section">
+      <div class="privacy-section-title">App lock</div>
+      <div class="privacy-section-desc">A PIN gate on this device. Deters casual snooping — not real encryption.</div>
+      <button id="btn-pin-setup">Set / change PIN</button>
+      <button id="btn-pin-remove">Remove PIN</button>
+      <button id="btn-webauthn-setup">Enable Face ID / Touch ID</button>
+    </div>
+    <div class="privacy-section">
+      <div class="privacy-section-title">Sync encryption</div>
+      <div class="privacy-section-desc">Encrypts entry text before it leaves this device for Dropbox. No passphrase recovery is possible if you forget it.</div>
+      <button id="btn-encryption-enable">Enable sync encryption</button>
+      <button id="btn-encryption-unlock">Enter passphrase this session</button>
+      <button id="btn-encryption-disable">Disable sync encryption</button>
+    </div>
+    <button id="btn-privacy-close">Close</button>
+  </div>
+</div>
+
+<div id="about-overlay">
+  <div id="about-box">
+    <div id="about-title">Ginkgo</div>
+    <div id="about-version">version 1.0</div>
+    <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
+    <button id="btn-about-close">Close</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════════════
+   IndexedDB layer
+   ════════════════════════════════════════════════════════════════════ */
+const DB_NAME = 'ginkgo-db';
+const DB_VERSION = 2;
+let dbPromise = null;
+
+function idbOpen() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      const tx = req.transaction;
+      const meta = db.objectStoreNames.contains('entries_meta')
+        ? tx.objectStore('entries_meta')
+        : db.createObjectStore('entries_meta', { keyPath: 'id' });
+      ['by_date', 'by_createdAt', 'by_syncState', 'by_remotePath', 'by_monthDay'].forEach(name => {
+        const field = name.replace('by_', '');
+        if (!meta.indexNames.contains(name)) meta.createIndex(name, field);
+      });
+      if (!db.objectStoreNames.contains('entries_body')) db.createObjectStore('entries_body', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('sync_meta')) db.createObjectStore('sync_meta', { keyPath: 'key' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+
+function idbGet(store, key) {
+  return idbOpen().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function idbPut(store, value) {
+  return idbOpen().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readwrite').objectStore(store).put(value);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function idbDelete(store, key) {
+  return idbOpen().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readwrite').objectStore(store).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  }));
+}
+// Iterate an index range; visitor(cursor) returning false stops iteration early.
+function idbCursor(store, indexName, range, direction, visitor) {
+  return idbOpen().then(db => new Promise((resolve, reject) => {
+    const src = indexName ? db.transaction(store, 'readonly').objectStore(store).index(indexName)
+                           : db.transaction(store, 'readonly').objectStore(store);
+    const req = src.openCursor(range || null, direction || 'next');
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) { resolve(); return; }
+      const keepGoing = visitor(cursor);
+      if (keepGoing !== false) cursor.continue();
+      else resolve();
+    };
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Date / formatting helpers
+   ════════════════════════════════════════════════════════════════════ */
+function pad2(n) { return String(n).padStart(2, '0'); }
+function dateKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function monthDayKey(d) { return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function monthKeyOf(y, m) { return `${y}-${pad2(m + 1)}`; }
+function prevMonth(y, m) { return m === 0 ? { year: y - 1, month: 11 } : { year: y, month: m - 1 }; }
+
+function formatEntryTimestamp(dateLike) {
+  const d = dateLike instanceof Date ? dateLike : new Date(dateLike);
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}-${d.getFullYear()} ${pad2(h)}:${pad2(d.getMinutes())} ${ampm}`;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const DATELINE_RE = /^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}\s+(AM|PM)/;
+const IMAGE_ONLY_LINE_RE = /^(!\[[^\]]*\]\([^)]*\)\s*)+$/;
+
+function deriveTitleAndPreview(content) {
+  const lines = (content || '').split('\n');
+  let idx = 0;
+  let title = 'untitled';
+  const headingMatch = (lines[0] || '').match(/^#{1,2}\s+(.*)/);
+  if (headingMatch) {
+    title = headingMatch[1].trim() || 'untitled';
+    idx = 1;
+  } else {
+    const firstNonEmpty = lines.find(l => l.trim() !== '' && !IMAGE_ONLY_LINE_RE.test(l.trim()));
+    if (firstNonEmpty) title = firstNonEmpty.trim();
+  }
+  while (idx < lines.length && lines[idx].trim() === '') idx++;
+  if (DATELINE_RE.test((lines[idx] || '').trim())) idx++;
+  while (idx < lines.length && lines[idx].trim() === '') idx++;
+  let preview = '';
+  for (; idx < lines.length; idx++) {
+    const t = lines[idx].trim();
+    if (t !== '' && !IMAGE_ONLY_LINE_RE.test(t)) { preview = t; break; }
+  }
+  return { title, preview: preview.slice(0, 150) };
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Theme sync (mirrors the embedded editor's tree-editor-settings)
+   ════════════════════════════════════════════════════════════════════ */
+const THEME_PALETTE = {
+  parchment: { bg: '#f5f0e8', surface: '#ede8de', text: '#2c2416', accent: '#8b6e4e', muted: '#a89880', border: '#d4c8b4' },
+  dark:      { bg: '#1a1a1a', surface: '#252525', text: '#d8d8d8', accent: '#444444', muted: '#555555', border: '#2a2a2a' },
+  moss:      { bg: '#1e2420', surface: '#242d28', text: '#d4ddd0', accent: '#82b890', muted: '#607860', border: '#2e3d30' },
+  slate:     { bg: '#1c2333', surface: '#232d40', text: '#d0d8e8', accent: '#7a9fd4', muted: '#5a7090', border: '#2e3d54' },
+  paper:     { bg: '#f5f7fa', surface: '#eceef2', text: '#1a1d23', accent: '#4a6080', muted: '#8a96a8', border: '#d4d8e0' },
+  sage:      { bg: '#c4d9c4', surface: '#b8cfb8', text: '#162016', accent: '#3a6640', muted: '#4a6050', border: '#a0bfa0' },
+  ash:       { bg: '#b0b0b0', surface: '#a4a4a4', text: '#0e0e0e', accent: '#3a3a3a', muted: '#555555', border: '#909090' },
+  terminal:  { bg: '#0a0a0a', surface: '#0f0f0f', text: '#22cc22', accent: '#0a5c0a', muted: '#1a7a1a', border: '#1a3a1a' },
+};
+
+const AMBER_CRT_PALETTE = { text: '#ffb000', accent: '#7a4a00', muted: '#a06a00', border: '#3a2200' };
+
+function applyTheme(settings) {
+  if (!settings) return;
+  let p;
+  if (settings.theme === 'custom') {
+    p = { bg: settings.customBg, surface: settings.customBg, text: settings.customText, accent: settings.customAccent, muted: settings.customAccent, border: settings.customAccent };
+  } else if (settings.theme === 'custom2') {
+    p = { bg: settings.custom2Bg, surface: settings.custom2Bg, text: settings.custom2Text, accent: settings.custom2Accent, muted: settings.custom2Accent, border: settings.custom2Accent };
+  } else {
+    p = THEME_PALETTE[settings.theme] || THEME_PALETTE.parchment;
+  }
+  const isAmber = settings.theme === 'terminal' && !!settings.amberCrt;
+  if (isAmber) p = { ...p, ...AMBER_CRT_PALETTE };
+  const root = document.documentElement.style;
+  ['bg', 'surface', 'text', 'accent', 'muted', 'border'].forEach(k => { if (p[k]) root.setProperty('--' + k, p[k]); });
+  if (settings.font) root.setProperty('--ui-font', settings.font);
+  document.body.dataset.theme = settings.theme || 'parchment';
+  document.body.classList.toggle('crt-on', !!settings.crtEnabled);
+  document.body.classList.toggle('amber-crt', isAmber);
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme && p.bg) metaTheme.setAttribute('content', p.bg);
+}
+
+(function initialThemeSync() {
+  try {
+    const raw = localStorage.getItem('tree-editor-settings');
+    if (raw) applyTheme(JSON.parse(raw));
+  } catch (e) {}
+})();
+
+/* ════════════════════════════════════════════════════════════════════
+   Editor iframe bridge
+   ════════════════════════════════════════════════════════════════════ */
+const editorFrame = document.getElementById('editor-frame');
+let iframeReady = false;
+let pendingLoad = null;
+let currentEntryId = null;
+
+function openInEditor(content, mode) {
+  const msg = { type: 'LOAD_CONTENT', content, mode };
+  if (iframeReady && editorFrame.contentWindow) {
+    editorFrame.contentWindow.postMessage(msg, location.origin);
+  } else {
+    pendingLoad = msg;
+  }
+}
+
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin) return;
+  const msg = e.data;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'EMBED_READY') {
+    iframeReady = true;
+    if (pendingLoad) { editorFrame.contentWindow.postMessage(pendingLoad, location.origin); pendingLoad = null; }
+  } else if (msg.type === 'SAVE_CONTENT') {
+    saveCurrentEntry(msg.content);
+  } else if (msg.type === 'THEME_CHANGED') {
+    applyTheme(msg.settings);
+  } else if (msg.type === 'FOCUS_MODE_CHANGED') {
+    setGinkgoFocus(!!msg.active);
+  }
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   Focus mode — two-layer: Ginkgo hides its own topbar, the iframe hides
+   its own (already largely-hidden) chrome and applies its writing-area
+   spacing polish. Kept in sync regardless of which side toggled it.
+   ════════════════════════════════════════════════════════════════════ */
+let ginkgoFocusActive = false;
+function setGinkgoFocus(active) {
+  ginkgoFocusActive = active;
+  document.body.classList.toggle('ginkgo-focus', active);
+  if (active) {
+    closeDrawer(); // nothing but the writing area — also avoids the exit control overlapping drawer tabs
+    if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+  } else if (document.fullscreenElement === document.documentElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+function toggleFocusMode() {
+  setGinkgoFocus(!ginkgoFocusActive);
+  if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'TOGGLE_FOCUS' }, location.origin);
+}
+document.getElementById('btn-focus').addEventListener('click', toggleFocusMode);
+document.getElementById('focus-exit').addEventListener('click', toggleFocusMode);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && ginkgoFocusActive) setGinkgoFocus(false);
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   Entry CRUD
+   ════════════════════════════════════════════════════════════════════ */
+async function newEntryMeta(date) {
+  const id = genId();
+  return {
+    id,
+    createdAt: date.toISOString(),
+    updatedAt: date.toISOString(),
+    date: dateKey(date),
+    monthDay: monthDayKey(date),
+    title: 'untitled',
+    preview: '',
+    thumbnail: null,
+    syncState: 'dirty',
+    contentHash: null,
+    remotePath: null,
+    remoteRev: null,
+    lastSyncedAt: null,
+    lastSyncedHash: null,
+    deletedAt: null,
+    conflictOf: null,
+  };
+}
+
+let creatingEntry = false;
+async function createEntry(date) {
+  if (creatingEntry) return; // guard against double-tap / overlapping calls
+  creatingEntry = true;
+  try {
+    date = date || new Date();
+    const meta = await newEntryMeta(date);
+    // Just the timestamp up front — location/weather is looked up in the
+    // background afterward so creating an entry is never gated on a
+    // geolocation prompt or network round-trip (that lookup alone can take
+    // several seconds, which used to leave currentEntryId unset the whole
+    // time — e.g. blocking "attach photo" right after tapping "+").
+    const timestampLine = formatEntryTimestamp(date);
+    const content = `## \n${timestampLine}\n\n`;
+    meta.contentHash = await sha256Hex(content);
+    await idbPut('entries_meta', meta);
+    await idbPut('entries_body', { id: meta.id, content });
+    currentEntryId = meta.id;
+    openInEditor(content, 'write');
+    closeDrawerIfOverlay();
+    await refreshJournalViewAround(meta);
+    if (typeof scheduleSync === 'function') scheduleSync();
+
+    if (getLocationWeatherEnabled()) enrichDatelineInBackground(meta.id, timestampLine, date);
+  } finally {
+    creatingEntry = false;
+  }
+}
+
+// Adds location/weather to an already-created entry's dateline once the
+// lookup resolves, without ever blocking entry creation itself. Only
+// touches the dateline text if it's still exactly what was auto-inserted —
+// if the user has already edited or deleted that line, this is a no-op,
+// so it can never clobber something the user typed.
+async function enrichDatelineInBackground(entryId, originalDatelineLine, date) {
+  try {
+    const extra = await captureLocationWeather();
+    const parts = [formatEntryTimestamp(date)];
+    if (extra.locationLabel) parts.push(extra.locationLabel);
+    if (extra.weatherLabel) parts.push(extra.weatherLabel);
+    const enrichedLine = parts.join(' · ');
+    if (enrichedLine === originalDatelineLine) return; // nothing to add
+
+    if (currentEntryId === entryId && editorFrame.contentWindow) {
+      // Still open in the editor — patch the live document; the next
+      // autosave cycle persists it normally, same as any other edit.
+      editorFrame.contentWindow.postMessage({ type: 'UPDATE_DATELINE', from: originalDatelineLine, to: enrichedLine }, location.origin);
+    } else {
+      // User already moved on to something else — patch storage directly.
+      const body = await idbGet('entries_body', entryId);
+      if (body && body.content.includes(originalDatelineLine)) {
+        const newContent = body.content.replace(originalDatelineLine, enrichedLine);
+        await idbPut('entries_body', { id: entryId, content: newContent });
+        const meta = await idbGet('entries_meta', entryId);
+        if (meta) {
+          meta.contentHash = await sha256Hex(newContent);
+          meta.syncState = 'dirty';
+          await idbPut('entries_meta', meta);
+          patchListRowInPlace(meta);
+          if (typeof scheduleSync === 'function') scheduleSync();
+        }
+      }
+    }
+  } catch (e) {
+    // Was always best-effort and must never block writing, but silence
+    // alone made this undiagnosable — surface it in the status bar, and
+    // only if the user is still on the entry this was for (showing it
+    // after they've already moved on would just be confusing). Geolocation's
+    // own PERMISSION_DENIED (code 1) is distinguished from other failures
+    // (timeout, position unavailable, weather/geocode lookup errors) since
+    // it points at a fixable browser setting rather than a transient blip.
+    if (currentEntryId === entryId) {
+      showStatusMessage(e.code === 1 ? 'location permission denied.' : 'location unavailable.');
+    }
+  }
+}
+
+// General-purpose channel to the editor's own status bar (see the fork's
+// SHOW_STATUS_MESSAGE handler) — reuse this for any future Ginkgo-side
+// event that's worth a brief, personality-matched message, not just
+// location/weather failures.
+function showStatusMessage(text) {
+  if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'SHOW_STATUS_MESSAGE', text }, location.origin);
+}
+
+async function openEntry(id, mode) {
+  const [meta, body] = await Promise.all([idbGet('entries_meta', id), idbGet('entries_body', id)]);
+  if (!meta || !body) return;
+  currentEntryId = id;
+  openInEditor(body.content, mode || 'preview');
+  closeDrawerIfOverlay();
+}
+
+async function saveCurrentEntry(content) {
+  if (!currentEntryId) return;
+  const meta = await idbGet('entries_meta', currentEntryId);
+  if (!meta) return;
+  const { title, preview } = deriveTitleAndPreview(content);
+  meta.title = title;
+  meta.preview = preview;
+  meta.updatedAt = new Date().toISOString();
+  meta.contentHash = await sha256Hex(content);
+  meta.syncState = 'dirty';
+  if (typeof extractThumbnail === 'function') {
+    const thumb = await extractThumbnail(content);
+    if (thumb) meta.thumbnail = thumb;
+  }
+  await idbPut('entries_meta', meta);
+  await idbPut('entries_body', { id: currentEntryId, content });
+  patchListRowInPlace(meta);
+  refreshCalendarDots();
+  if (typeof scheduleSync === 'function') scheduleSync();
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Custom image attachments
+   Images are embedded directly as base64 data-URI markdown image tags —
+   the editor fork needs zero awareness of "attachments" as a concept,
+   and the image travels for free through export/Dropbox sync since it's
+   just part of the entry's content string.
+   ════════════════════════════════════════════════════════════════════ */
+const IMG_DATA_URI_RE = /!\[[^\]]*\]\((data:image\/[a-zA-Z0-9.+-]+;base64,[^)]+)\)/;
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('image load failed'));
+    img.src = src;
+  });
+}
+
+async function resizeFileToDataUri(file, maxDim, quality) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    let { width, height } = img;
+    if (width > maxDim || height > maxDim) {
+      if (width >= height) { height = Math.round(height * maxDim / width); width = maxDim; }
+      else { width = Math.round(width * maxDim / height); height = maxDim; }
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', quality);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function resizeDataUriToThumbnail(dataUri, size, quality) {
+  const img = await loadImage(dataUri);
+  const { width, height } = img;
+  const side = Math.min(width, height);
+  const sx = (width - side) / 2, sy = (height - side) / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  canvas.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, size, size);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+async function extractThumbnail(content) {
+  const match = content.match(IMG_DATA_URI_RE);
+  if (!match) return null;
+  try {
+    return await resizeDataUriToThumbnail(match[1], 120, 0.6);
+  } catch (e) {
+    return null;
+  }
+}
+
+document.getElementById('btn-attach-photo').addEventListener('click', () => {
+  if (!currentEntryId) { alert('Open or create an entry first.'); return; }
+  document.getElementById('photo-input').click();
+});
+
+document.getElementById('photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = ''; // reset so re-selecting the same file still fires change next time
+  if (!file || !currentEntryId) return;
+  try {
+    const dataUri = await resizeFileToDataUri(file, 1600, 0.8);
+    if (editorFrame.contentWindow) {
+      editorFrame.contentWindow.postMessage({ type: 'INSERT_AT_CURSOR', text: `\n![](${dataUri})\n` }, location.origin);
+    }
+  } catch (err) {
+    alert('Could not process that image.');
+  }
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   Location + weather capture
+   ════════════════════════════════════════════════════════════════════ */
+const WEATHER_CODES = {
+  0: 'Clear', 1: 'Mostly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+  45: 'Fog', 48: 'Fog',
+  51: 'Light Drizzle', 53: 'Drizzle', 55: 'Heavy Drizzle',
+  61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
+  71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow', 77: 'Snow Grains',
+  80: 'Rain Showers', 81: 'Rain Showers', 82: 'Violent Rain Showers',
+  85: 'Snow Showers', 86: 'Snow Showers',
+  95: 'Thunderstorm', 96: 'Thunderstorm', 99: 'Thunderstorm',
+};
+
+function getLocationWeatherEnabled() {
+  const v = localStorage.getItem('ginkgo-loc-weather-enabled');
+  return v === null ? true : v === '1';
+}
+
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
+function getPosition(timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('no geolocation')); return; }
+    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: timeoutMs, maximumAge: 5 * 60 * 1000 });
+  });
+}
+
+async function reverseGeocode(lat, lon) {
+  const res = await fetchWithTimeout(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`, 5000);
+  const data = await res.json();
+  const city = data.city || data.locality || data.principalSubdivision;
+  const region = data.principalSubdivisionCode ? data.principalSubdivisionCode.split('-').pop() : data.countryCode;
+  return city ? (region ? `${city}, ${region}` : city) : null;
+}
+
+async function fetchWeather(lat, lon) {
+  const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&temperature_unit=fahrenheit`, 5000);
+  const data = await res.json();
+  const cw = data.current_weather;
+  if (!cw) return null;
+  const label = WEATHER_CODES[cw.weathercode] || 'Weather';
+  return `${Math.round(cw.temperature)}°F, ${label}`;
+}
+
+async function captureLocationWeather() {
+  const pos = await getPosition(6000);
+  const { latitude, longitude } = pos.coords;
+  const [locationLabel, weatherLabel] = await Promise.all([
+    reverseGeocode(latitude, longitude).catch(() => null),
+    fetchWeather(latitude, longitude).catch(() => null),
+  ]);
+  return { locationLabel, weatherLabel };
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Calendar
+   ════════════════════════════════════════════════════════════════════ */
+let calYear, calMonth;
+(function initCalMonth() {
+  const t = new Date();
+  calYear = t.getFullYear();
+  calMonth = t.getMonth();
+})();
+
+async function getMonthDots(year, month) {
+  const start = `${year}-${pad2(month + 1)}-01`;
+  const nm = month === 11 ? { y: year + 1, m: 0 } : { y: year, m: month + 1 };
+  const end = `${nm.y}-${pad2(nm.m + 1)}-01`;
+  const range = IDBKeyRange.bound(start, end, false, true);
+  const dots = new Set();
+  await idbCursor('entries_meta', 'by_date', range, 'next', (cursor) => {
+    if (cursor.value.syncState !== 'tombstone') dots.add(cursor.value.date);
+    return true;
+  });
+  return dots;
+}
+
+async function renderCalendar() {
+  const dots = await getMonthDots(calYear, calMonth);
+  document.getElementById('cal-label').textContent =
+    new Date(calYear, calMonth, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+  ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(d => {
+    const el = document.createElement('div'); el.className = 'cal-dow'; el.textContent = d; grid.appendChild(el);
+  });
+  const firstDow = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  for (let i = 0; i < firstDow; i++) {
+    const el = document.createElement('div'); el.className = 'cal-cell empty'; grid.appendChild(el);
+  }
+  const todayKey = dateKey(new Date());
+  for (let day = 1; day <= daysInMonth; day++) {
+    const key = `${calYear}-${pad2(calMonth + 1)}-${pad2(day)}`;
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell' + (key === todayKey ? ' today' : '');
+    cell.innerHTML = `<span>${day}</span>` + (dots.has(key) ? '<i class="dot"></i>' : '');
+    cell.addEventListener('click', () => onCalendarDayClick(key, dots.has(key)));
+    grid.appendChild(cell);
+  }
+}
+
+document.getElementById('cal-prev').addEventListener('click', () => {
+  calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+});
+document.getElementById('cal-next').addEventListener('click', () => {
+  calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+});
+
+function refreshCalendarDots() { renderCalendar(); }
+
+async function onCalendarDayClick(dateKeyStr, hasEntry) {
+  const [y, m, d] = dateKeyStr.split('-').map(Number);
+  if (!hasEntry) {
+    if (confirm('No entries on ' + dateKeyStr + '. Create one?')) {
+      await createEntry(new Date(y, m - 1, d, 12, 0, 0));
+    }
+    return;
+  }
+  await jumpListToMonth(y, m - 1);
+  scrollListToDate(dateKeyStr);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Entry list (chronological, month-paginated, bidirectionally synced
+   with the calendar above it)
+   ════════════════════════════════════════════════════════════════════ */
+const listEl = document.getElementById('entry-list');
+const sentinelEl = document.getElementById('list-bottom-sentinel');
+let loadedMonths = new Set();
+let oldestLoaded = null;
+let programmaticScroll = false;
+
+async function getMonthEntries(year, month) {
+  const start = new Date(year, month, 1).toISOString();
+  const nm = month === 11 ? new Date(year + 1, 0, 1) : new Date(year, month + 1, 1);
+  const range = IDBKeyRange.bound(start, nm.toISOString(), false, true);
+  const rows = [];
+  await idbCursor('entries_meta', 'by_createdAt', range, 'next', (cursor) => {
+    if (cursor.value.syncState !== 'tombstone') rows.push(cursor.value);
+    return true;
+  });
+  rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return rows;
+}
+
+function renderEntryRow(meta) {
+  const row = document.createElement('div');
+  row.className = 'entry-row' + (meta.conflictOf ? ' conflict' : '');
+  row.dataset.id = meta.id;
+  row.dataset.date = meta.date;
+  const thumbHtml = meta.thumbnail
+    ? `<img class="entry-thumb" src="${meta.thumbnail}" alt="">`
+    : '<div class="entry-thumb placeholder"></div>';
+  row.innerHTML = `
+    ${thumbHtml}
+    <div class="entry-row-text">
+      <div class="entry-row-title">${escapeHtml(meta.title || 'untitled')}</div>
+      <div class="entry-row-meta">${formatEntryTimestamp(meta.createdAt)}</div>
+      <div class="entry-row-preview">${escapeHtml(meta.preview || '')}</div>
+    </div>
+    <button class="entry-row-delete" title="Delete entry">🗑</button>`;
+  row.addEventListener('click', (e) => {
+    if (e.target.closest('.entry-row-delete')) return;
+    openEntry(meta.id, 'preview');
+  });
+  row.querySelector('.entry-row-delete').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await deleteEntry(meta.id);
+  });
+  return row;
+}
+
+function updateOldest(y, m) {
+  if (!oldestLoaded || y < oldestLoaded.year || (y === oldestLoaded.year && m < oldestLoaded.month)) {
+    oldestLoaded = { year: y, month: m };
+  }
+}
+
+async function appendMonth(year, month) {
+  const key = monthKeyOf(year, month);
+  if (loadedMonths.has(key)) return;
+  loadedMonths.add(key);
+  updateOldest(year, month);
+  const entries = await getMonthEntries(year, month);
+  const marker = document.createElement('div');
+  marker.className = 'month-marker';
+  marker.dataset.year = year; marker.dataset.month = month;
+  marker.textContent = new Date(year, month, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  listEl.insertBefore(marker, sentinelEl);
+  entries.forEach(meta => listEl.insertBefore(renderEntryRow(meta), sentinelEl));
+  refreshEmptyHint();
+}
+
+function refreshEmptyHint() {
+  const existing = document.getElementById('empty-hint');
+  const hasRows = listEl.querySelector('.entry-row');
+  if (!hasRows && !existing) {
+    const hint = document.createElement('div');
+    hint.id = 'empty-hint';
+    hint.textContent = 'No entries yet — tap + to write your first one.';
+    listEl.insertBefore(hint, sentinelEl);
+  } else if (hasRows && existing) {
+    existing.remove();
+  }
+}
+
+function evictOldMonthsIfNeeded() {
+  const MAX_MONTHS = 12;
+  if (loadedMonths.size <= MAX_MONTHS) return;
+  const sorted = [...loadedMonths].sort();
+  const toRemove = sorted[0];
+  loadedMonths.delete(toRemove);
+  const [y, m1] = toRemove.split('-').map(Number);
+  const marker = listEl.querySelector(`.month-marker[data-year="${y}"][data-month="${m1 - 1}"]`);
+  if (marker) {
+    let next = marker.nextSibling;
+    marker.remove();
+    while (next && next !== sentinelEl && !(next.classList && next.classList.contains('month-marker'))) {
+      const del = next; next = next.nextSibling; del.remove();
+    }
+  }
+  oldestLoaded = null;
+  loadedMonths.forEach(k => { const [yy, mm] = k.split('-').map(Number); updateOldest(yy, mm - 1); });
+}
+
+// Scroll-position "scrollspy": on each scroll tick (rAF-throttled), find the
+// last month-marker that has scrolled to or past the top edge of the list
+// and treat that as the current month. More robust than watching for
+// IntersectionObserver crossing events, which can be skipped entirely
+// during large/fast scroll jumps (a marker can pass straight through the
+// observed threshold band between two rendered frames).
+let scrollSyncRaf = null;
+function updateCalendarFromScroll() {
+  const markers = listEl.querySelectorAll('.month-marker');
+  if (!markers.length) return;
+  const containerTop = listEl.getBoundingClientRect().top;
+  let current = markers[0];
+  for (const m of markers) {
+    if (m.getBoundingClientRect().top <= containerTop + 40) current = m;
+    else break; // markers are in document order — once one hasn't reached the top, later ones haven't either
+  }
+  const y = Number(current.dataset.year), m = Number(current.dataset.month);
+  if (y !== calYear || m !== calMonth) { calYear = y; calMonth = m; renderCalendar(); }
+}
+listEl.addEventListener('scroll', () => {
+  if (programmaticScroll || scrollSyncRaf) return;
+  scrollSyncRaf = requestAnimationFrame(() => {
+    scrollSyncRaf = null;
+    if (!programmaticScroll) updateCalendarFromScroll();
+  });
+});
+
+const bottomSentinelObserver = new IntersectionObserver(async (entries) => {
+  for (const e of entries) {
+    if (e.isIntersecting && oldestLoaded) {
+      const prev = prevMonth(oldestLoaded.year, oldestLoaded.month);
+      await appendMonth(prev.year, prev.month);
+      evictOldMonthsIfNeeded();
+    }
+  }
+}, { root: listEl, rootMargin: '400px' });
+bottomSentinelObserver.observe(sentinelEl);
+
+async function renderInitialList() {
+  listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
+  loadedMonths.clear();
+  oldestLoaded = null;
+  await appendMonth(calYear, calMonth);
+  const prev = prevMonth(calYear, calMonth);
+  await appendMonth(prev.year, prev.month);
+}
+
+async function jumpListToMonth(year, month) {
+  const key = monthKeyOf(year, month);
+  if (!loadedMonths.has(key)) {
+    listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
+    loadedMonths.clear();
+    oldestLoaded = null;
+    await appendMonth(year, month);
+    const prev = prevMonth(year, month);
+    await appendMonth(prev.year, prev.month);
+  }
+}
+
+function scrollListToDate(dateKeyStr) {
+  programmaticScroll = true;
+  const row = listEl.querySelector(`.entry-row[data-date="${dateKeyStr}"]`);
+  if (row) row.scrollIntoView({ block: 'start' });
+  setTimeout(() => { programmaticScroll = false; }, 500);
+}
+
+function patchListRowInPlace(meta) {
+  const row = listEl.querySelector(`.entry-row[data-id="${meta.id}"]`);
+  if (row) {
+    const fresh = renderEntryRow(meta);
+    row.replaceWith(fresh);
+  }
+}
+
+async function refreshJournalViewAround(meta) {
+  const d = new Date(meta.createdAt);
+  calYear = d.getFullYear(); calMonth = d.getMonth();
+  await renderCalendar();
+  await renderInitialList();
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Trash / undo — soft-delete via tombstone, content retained so it can
+   be restored within the grace period. Real deletion only happens in
+   purgeExpiredTombstones() once the grace period has passed.
+   ════════════════════════════════════════════════════════════════════ */
+const TRASH_GRACE_DAYS = 30;
+
+async function deleteEntry(id) {
+  const meta = await idbGet('entries_meta', id);
+  if (!meta) return;
+  meta.syncState = 'tombstone';
+  meta.deletedAt = new Date().toISOString();
+  await idbPut('entries_meta', meta);
+  if (currentEntryId === id) currentEntryId = null;
+  const row = listEl.querySelector(`.entry-row[data-id="${id}"]`);
+  if (row) row.remove();
+  refreshEmptyHint();
+  refreshCalendarDots();
+  if (typeof scheduleSync === 'function') scheduleSync();
+  showStatusMessage('moved to trash.');
+}
+
+async function restoreEntry(id) {
+  const meta = await idbGet('entries_meta', id);
+  if (!meta) return;
+  meta.syncState = 'dirty';
+  meta.deletedAt = null;
+  meta.remoteRev = null; // Dropbox likely already deleted the old file; next push re-adds it
+  await idbPut('entries_meta', meta);
+  await refreshJournalViewAround(meta);
+  await renderTrash();
+  if (typeof scheduleSync === 'function') scheduleSync();
+  showStatusMessage('restored.');
+}
+
+async function purgeExpiredTombstones() {
+  const cutoff = Date.now() - TRASH_GRACE_DAYS * 24 * 60 * 60 * 1000;
+  const toPurge = [];
+  await idbCursor('entries_meta', 'by_syncState', IDBKeyRange.only('tombstone'), 'next', (cursor) => {
+    const d = cursor.value.deletedAt ? new Date(cursor.value.deletedAt).getTime() : 0;
+    if (d && d < cutoff) toPurge.push(cursor.value.id);
+    return true;
+  });
+  for (const id of toPurge) {
+    await idbDelete('entries_meta', id);
+    await idbDelete('entries_body', id);
+  }
+}
+
+function renderTrashRow(meta) {
+  const row = document.createElement('div');
+  row.className = 'entry-row';
+  const daysLeft = Math.max(0, TRASH_GRACE_DAYS - Math.floor((Date.now() - new Date(meta.deletedAt).getTime()) / 86400000));
+  row.innerHTML = `
+    <div class="entry-row-text">
+      <div class="entry-row-title">${escapeHtml(meta.title || 'untitled')}</div>
+      <div class="entry-row-meta">deleted ${formatEntryTimestamp(meta.deletedAt)} · ${daysLeft}d left</div>
+      <div class="entry-row-preview">${escapeHtml(meta.preview || '')}</div>
+    </div>`;
+  const actions = document.createElement('div');
+  actions.className = 'trash-row-actions';
+  const restoreBtn = document.createElement('button');
+  restoreBtn.textContent = 'restore';
+  restoreBtn.addEventListener('click', () => restoreEntry(meta.id));
+  actions.appendChild(restoreBtn);
+  row.appendChild(actions);
+  return row;
+}
+
+async function renderTrash() {
+  await purgeExpiredTombstones();
+  const rows = [];
+  await idbCursor('entries_meta', 'by_syncState', IDBKeyRange.only('tombstone'), 'next', (cursor) => {
+    rows.push(cursor.value);
+    return true;
+  });
+  rows.sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const trashList = document.getElementById('trash-list');
+  trashList.innerHTML = '';
+  if (!rows.length) {
+    trashList.innerHTML = '<div id="empty-hint">Trash is empty.</div>';
+    return;
+  }
+  rows.forEach(meta => trashList.appendChild(renderTrashRow(meta)));
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   "On this day" — surfaces past entries written on today's calendar
+   day in prior years.
+   ════════════════════════════════════════════════════════════════════ */
+function getDismissedOtdIds(todayKey) {
+  try {
+    const raw = localStorage.getItem('ginkgo-otd-dismissed');
+    const obj = raw ? JSON.parse(raw) : {};
+    return new Set(obj[todayKey] || []);
+  } catch (e) { return new Set(); }
+}
+function dismissOtdId(todayKey, id) {
+  try {
+    const raw = localStorage.getItem('ginkgo-otd-dismissed');
+    const obj = raw ? JSON.parse(raw) : {};
+    obj[todayKey] = [...new Set([...(obj[todayKey] || []), id])];
+    // only keep today's dismissals around; drop anything from previous days
+    localStorage.setItem('ginkgo-otd-dismissed', JSON.stringify({ [todayKey]: obj[todayKey] }));
+  } catch (e) {}
+}
+
+async function renderOnThisDay() {
+  const wrap = document.getElementById('on-this-day-wrap');
+  wrap.innerHTML = '';
+  const today = new Date();
+  const md = monthDayKey(today);
+  const thisYear = today.getFullYear();
+  const todayKey = dateKey(today);
+  const dismissed = getDismissedOtdIds(todayKey);
+  const rows = [];
+  await idbCursor('entries_meta', 'by_monthDay', IDBKeyRange.only(md), 'next', (cursor) => {
+    const v = cursor.value;
+    if (v.syncState !== 'tombstone' && new Date(v.createdAt).getFullYear() !== thisYear && !dismissed.has(v.id)) rows.push(v);
+    return true;
+  });
+  if (!rows.length) return;
+  rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  rows.forEach(meta => {
+    const years = thisYear - new Date(meta.createdAt).getFullYear();
+    const card = document.createElement('div');
+    card.className = 'otd-card';
+    card.innerHTML = `
+      <button class="otd-dismiss" title="Dismiss">×</button>
+      <div class="otd-years">${years} year${years === 1 ? '' : 's'} ago, on this day</div>
+      <div class="otd-title">${escapeHtml(meta.title || 'untitled')}</div>`;
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.otd-dismiss')) return;
+      openEntry(meta.id, 'preview');
+    });
+    card.querySelector('.otd-dismiss').addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismissOtdId(todayKey, meta.id);
+      card.remove();
+    });
+    wrap.appendChild(card);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Search — full linear scan over entries_body, deliberately simple;
+   fine at personal-journal scale (thousands of entries).
+   ════════════════════════════════════════════════════════════════════ */
+let searchDebounceTimer = null;
+let searchRunId = 0;
+
+async function searchEntries(query) {
+  const myRunId = ++searchRunId;
+  const q = query.trim().toLowerCase();
+  const resultsEl = document.getElementById('search-results');
+  if (!q) { resultsEl.innerHTML = ''; return; }
+  const matches = [];
+  await idbCursor('entries_meta', 'by_createdAt', null, 'prev', (cursor) => {
+    if (myRunId !== searchRunId) return false; // a newer search superseded this one
+    const meta = cursor.value;
+    if (meta.syncState === 'tombstone') return true;
+    if ((meta.title || '').toLowerCase().includes(q) || (meta.preview || '').toLowerCase().includes(q)) {
+      matches.push(meta);
+    }
+    return matches.length < 50;
+  });
+  if (myRunId !== searchRunId) return;
+  // Also scan full bodies for entries not already matched via title/preview.
+  if (matches.length < 50) {
+    const matchedIds = new Set(matches.map(m => m.id));
+    await idbOpen().then(db => new Promise((resolve) => {
+      const tx = db.transaction(['entries_meta', 'entries_body'], 'readonly');
+      const metaStore = tx.objectStore('entries_meta');
+      const bodyStore = tx.objectStore('entries_body');
+      const req = metaStore.index('by_createdAt').openCursor(null, 'prev');
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor || myRunId !== searchRunId || matches.length >= 50) { resolve(); return; }
+        const meta = cursor.value;
+        if (meta.syncState !== 'tombstone' && !matchedIds.has(meta.id)) {
+          const breq = bodyStore.get(meta.id);
+          breq.onsuccess = () => {
+            const body = breq.result;
+            if (body && body.content.toLowerCase().includes(q)) {
+              matchedIds.add(meta.id);
+              matches.push(meta);
+            }
+            cursor.continue();
+          };
+          breq.onerror = () => cursor.continue();
+        } else {
+          cursor.continue();
+        }
+      };
+      req.onerror = () => resolve();
+    }));
+  }
+  if (myRunId !== searchRunId) return;
+  matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  resultsEl.innerHTML = '';
+  if (!matches.length) {
+    resultsEl.innerHTML = '<div id="empty-hint">No matching entries.</div>';
+    return;
+  }
+  matches.forEach(meta => resultsEl.appendChild(renderEntryRow(meta)));
+}
+
+document.getElementById('search-input').addEventListener('input', (e) => {
+  clearTimeout(searchDebounceTimer);
+  const q = e.target.value;
+  searchDebounceTimer = setTimeout(() => searchEntries(q), 300);
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   Privacy: app-lock PIN + optional sync encryption
+   Two independently-optional features. The PIN is a per-device deterrent
+   against casual snooping, not real encryption. Sync encryption is a
+   separate, heavier-weight opt-in that protects entry content in transit
+   to and at rest in Dropbox — it does not touch local IndexedDB, which is
+   already covered by the PIN gate (or the device's own lock screen).
+   ════════════════════════════════════════════════════════════════════ */
+function bytesToBase64(bytes) {
+  let str = '';
+  const arr = new Uint8Array(bytes);
+  for (let i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
+  return btoa(str);
+}
+function base64ToBytes(b64) {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+/* ── App lock (PIN + optional WebAuthn) ──────────────────────────── */
+const PIN_ITERATIONS = 100000;
+
+async function hashPin(pin, saltBytes) {
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: saltBytes, iterations: PIN_ITERATIONS, hash: 'SHA-256' }, keyMaterial, 256);
+  return bytesToBase64(bits);
+}
+async function setAppLockPin(pin) {
+  const existing = (await idbGet('sync_meta', 'app_lock')) || {};
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hashB64 = await hashPin(pin, salt);
+  await idbPut('sync_meta', { ...existing, key: 'app_lock', saltB64: bytesToBase64(salt), hashB64, iterations: PIN_ITERATIONS });
+}
+async function verifyAppLockPin(pin) {
+  const rec = await idbGet('sync_meta', 'app_lock');
+  if (!rec) return true;
+  const hashB64 = await hashPin(pin, base64ToBytes(rec.saltB64));
+  return hashB64 === rec.hashB64;
+}
+async function hasAppLock() { return !!(await idbGet('sync_meta', 'app_lock')); }
+async function removeAppLock() { await idbDelete('sync_meta', 'app_lock'); }
+
+function base64urlToBuf(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return base64ToBytes(str).buffer;
+}
+
+async function registerWebAuthn() {
+  if (!window.PublicKeyCredential) { alert('Face ID / Touch ID isn\'t available in this browser.'); return false; }
+  try {
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: 'Ginkgo' },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'ginkgo-journal', displayName: 'Ginkgo Journal' },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { userVerification: 'required', authenticatorAttachment: 'platform' },
+        timeout: 60000,
+      },
+    });
+    if (!cred) return false;
+    const rec = (await idbGet('sync_meta', 'app_lock')) || { key: 'app_lock' };
+    rec.webauthnCredId = base64url(cred.rawId);
+    await idbPut('sync_meta', rec);
+    return true;
+  } catch (e) {
+    console.error('WebAuthn registration failed', e);
+    alert('Could not set up Face ID / Touch ID.');
+    return false;
+  }
+}
+async function tryWebAuthnUnlock() {
+  const rec = await idbGet('sync_meta', 'app_lock');
+  if (!rec || !rec.webauthnCredId || !window.PublicKeyCredential) return false;
+  try {
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ id: base64urlToBuf(rec.webauthnCredId), type: 'public-key' }],
+        userVerification: 'required',
+        timeout: 60000,
+      },
+    });
+    return !!assertion;
+  } catch (e) {
+    return false;
+  }
+}
+
+let lastHiddenAt = null;
+const LOCK_IDLE_MS = 2 * 60 * 1000;
+
+function showLockOverlay() {
+  document.getElementById('lock-overlay').style.display = 'flex';
+  document.getElementById('lock-pin-input').value = '';
+  document.getElementById('lock-error').textContent = '';
+  idbGet('sync_meta', 'app_lock').then(rec => {
+    document.getElementById('lock-webauthn-btn').style.display = (rec && rec.webauthnCredId && window.PublicKeyCredential) ? '' : 'none';
+  });
+  setTimeout(() => document.getElementById('lock-pin-input').focus(), 50);
+}
+function hideLockOverlay() { document.getElementById('lock-overlay').style.display = 'none'; }
+
+async function attemptPinUnlock() {
+  const pin = document.getElementById('lock-pin-input').value;
+  if (await verifyAppLockPin(pin)) hideLockOverlay();
+  else {
+    document.getElementById('lock-error').textContent = 'Incorrect PIN.';
+    document.getElementById('lock-pin-input').value = '';
+  }
+}
+document.getElementById('lock-unlock-btn').addEventListener('click', attemptPinUnlock);
+document.getElementById('lock-pin-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptPinUnlock(); });
+document.getElementById('lock-webauthn-btn').addEventListener('click', async () => {
+  if (await tryWebAuthnUnlock()) hideLockOverlay();
+});
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'hidden') {
+    lastHiddenAt = Date.now();
+  } else if (document.visibilityState === 'visible') {
+    const idleFor = lastHiddenAt ? Date.now() - lastHiddenAt : 0;
+    lastHiddenAt = null;
+    if (idleFor > LOCK_IDLE_MS && await hasAppLock()) showLockOverlay();
+  }
+});
+
+/* ── Privacy settings panel ──────────────────────────────────────── */
+document.getElementById('btn-privacy-close').addEventListener('click', () => {
+  document.getElementById('privacy-overlay').style.display = 'none';
+});
+
+/* ── About panel ─────────────────────────────────────────────────── */
+document.getElementById('btn-about-close').addEventListener('click', () => {
+  document.getElementById('about-overlay').style.display = 'none';
+});
+
+/* ── "More" menu — repurposed hamburger. Style/settings/shortcuts re-trigger
+   the equivalent panel inside the iframe (which used to have its own now-
+   hidden button for each); privacy and about are Ginkgo's own panels. ── */
+function closeMoreMenu() { document.getElementById('more-menu').style.display = 'none'; }
+document.getElementById('btn-more-menu').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = document.getElementById('more-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#more-menu-wrap')) closeMoreMenu();
+});
+function sendOpenPanel(panel) {
+  if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'OPEN_PANEL', panel }, location.origin);
+}
+document.getElementById('more-style').addEventListener('click', () => { closeMoreMenu(); sendOpenPanel('style'); });
+document.getElementById('more-settings').addEventListener('click', () => { closeMoreMenu(); sendOpenPanel('settings'); });
+document.getElementById('more-shortcuts').addEventListener('click', () => { closeMoreMenu(); sendOpenPanel('shortcuts'); });
+document.getElementById('more-privacy').addEventListener('click', () => {
+  closeMoreMenu();
+  document.getElementById('privacy-overlay').style.display = 'flex';
+});
+document.getElementById('more-export-entry').addEventListener('click', async () => {
+  closeMoreMenu();
+  await exportCurrentEntryAsMd();
+});
+function slugifyEntryFilename(meta) {
+  const d = new Date(meta.createdAt);
+  const time = `${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+  const titlePart = (meta.title || 'untitled')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'untitled';
+  return `${dateKey(d)}-${time}-${titlePart}.md`;
+}
+async function exportCurrentEntryAsMd() {
+  if (!currentEntryId) { alert('Open an entry first.'); return; }
+  const [meta, body] = await Promise.all([idbGet('entries_meta', currentEntryId), idbGet('entries_body', currentEntryId)]);
+  if (!meta || !body) return;
+  const blob = new Blob([buildFileContent(meta, body.content)], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = slugifyEntryFilename(meta);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  showStatusMessage('entry exported.');
+}
+document.getElementById('more-about').addEventListener('click', () => {
+  closeMoreMenu();
+  document.getElementById('about-overlay').style.display = 'flex';
+});
+document.getElementById('btn-pin-setup').addEventListener('click', async () => {
+  const pin = prompt('Set a PIN to lock Ginkgo (4-6 digits):');
+  if (!pin) return;
+  if (!/^\d{4,6}$/.test(pin)) { alert('PIN must be 4-6 digits.'); return; }
+  if (prompt('Confirm PIN:') !== pin) { alert('PINs did not match — nothing changed.'); return; }
+  await setAppLockPin(pin);
+  alert('App lock PIN set.');
+});
+document.getElementById('btn-pin-remove').addEventListener('click', async () => {
+  if (!(await hasAppLock())) { alert('No PIN is currently set.'); return; }
+  const pin = prompt('Enter current PIN to remove app lock:');
+  if (pin === null) return;
+  if (!(await verifyAppLockPin(pin))) { alert('Incorrect PIN — not removed.'); return; }
+  await removeAppLock();
+  alert('App lock removed.');
+});
+document.getElementById('btn-webauthn-setup').addEventListener('click', async () => {
+  if (!(await hasAppLock())) { alert('Set a PIN first — Face ID / Touch ID is an additional unlock method on top of it.'); return; }
+  if (await registerWebAuthn()) alert('Face ID / Touch ID enabled.');
+});
+
+/* ── Sync encryption ──────────────────────────────────────────────── */
+const ENCRYPTION_ITERATIONS = 250000;
+const ENCRYPTED_PREFIX = 'GINKGOENC1:';
+let sessionEncryptionKey = null; // CryptoKey, memory-only — never persisted anywhere
+
+async function deriveEncryptionKey(passphrase, saltBytes) {
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: saltBytes, iterations: ENCRYPTION_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+}
+async function encryptString(plaintext, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
+  const combined = new Uint8Array(iv.length + cipherBuf.byteLength);
+  combined.set(iv, 0); combined.set(new Uint8Array(cipherBuf), iv.length);
+  return ENCRYPTED_PREFIX + bytesToBase64(combined);
+}
+async function decryptString(packed, key) {
+  const combined = base64ToBytes(packed.slice(ENCRYPTED_PREFIX.length));
+  const iv = combined.slice(0, 12);
+  const cipherBytes = combined.slice(12);
+  const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipherBytes);
+  return new TextDecoder().decode(plainBuf);
+}
+function isEncryptedPacked(str) { return typeof str === 'string' && str.startsWith(ENCRYPTED_PREFIX); }
+
+async function getSyncEncryptionSettings() {
+  return (await idbGet('sync_meta', 'sync_encryption')) || { key: 'sync_encryption', enabled: false, saltB64: null };
+}
+
+async function maybeEncryptForUpload(content) {
+  const settings = await getSyncEncryptionSettings();
+  if (!settings.enabled) return content;
+  if (!sessionEncryptionKey) throw new Error('Sync encryption is on but the passphrase hasn\'t been entered this session yet.');
+  return encryptString(content, sessionEncryptionKey);
+}
+async function maybeDecryptFromDownload(content) {
+  if (!isEncryptedPacked(content)) return content;
+  if (!sessionEncryptionKey) throw new Error('This entry is encrypted — enter the sync passphrase to read it.');
+  return decryptString(content, sessionEncryptionKey);
+}
+
+async function enableSyncEncryption() {
+  const settings = await getSyncEncryptionSettings();
+  if (settings.enabled) { alert('Sync encryption is already enabled.'); return; }
+  if (!confirm(
+    'Sync encryption protects entry text stored in Dropbox with a passphrase only you know.\n\n' +
+    'IMPORTANT: there is no way to recover a forgotten passphrase. If you lose it, entries already ' +
+    'synced to Dropbox become permanently unreadable (your local copies on this device are unaffected).\n\n' +
+    'Continue?'
+  )) return;
+  const passphrase = prompt('Choose a sync encryption passphrase (use something you\'ll remember — it cannot be reset):');
+  if (!passphrase || passphrase.length < 8) { alert('Choose a passphrase of at least 8 characters.'); return; }
+  if (prompt('Confirm passphrase:') !== passphrase) { alert('Passphrases did not match — nothing changed.'); return; }
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  sessionEncryptionKey = await deriveEncryptionKey(passphrase, salt);
+  const saltB64 = bytesToBase64(salt);
+  await idbPut('sync_meta', { key: 'sync_encryption', enabled: true, saltB64 });
+
+  // Upload the salt itself to the Dropbox app folder so a second device can derive the same key.
+  if (await isDropboxConnected()) {
+    try { await dbxUpload('/.ginkgo-salt', saltB64, 'overwrite'); }
+    catch (e) { console.error('Failed to upload encryption salt', e); }
+  }
+  // Every existing entry needs to be re-pushed now that encryption is on.
+  const toReupload = [];
+  await idbCursor('entries_meta', null, null, 'next', (c) => {
+    if (c.value.syncState === 'clean') toReupload.push(c.value);
+    return true;
+  });
+  for (const meta of toReupload) {
+    meta.syncState = 'dirty';
+    await idbPut('entries_meta', meta);
+  }
+  alert('Sync encryption enabled. Existing entries will re-sync encrypted.');
+  scheduleSync();
+}
+
+async function enterEncryptionPassphraseThisSession() {
+  const settings = await getSyncEncryptionSettings();
+  if (!settings.enabled || !settings.saltB64) {
+    alert('Sync encryption isn\'t enabled yet on this device. If you enabled it on another device, connect Dropbox first so the salt file can be fetched.');
+    return;
+  }
+  const passphrase = prompt('Enter your sync encryption passphrase:');
+  if (!passphrase) return;
+  sessionEncryptionKey = await deriveEncryptionKey(passphrase, base64ToBytes(settings.saltB64));
+  alert('Passphrase set for this session.');
+  scheduleSync();
+}
+
+async function fetchEncryptionSaltFromDropbox() {
+  try {
+    const saltB64 = await dbxDownload('/.ginkgo-salt');
+    await idbPut('sync_meta', { key: 'sync_encryption', enabled: true, saltB64 });
+    return saltB64;
+  } catch (e) {
+    return null; // no salt file yet — encryption not enabled on any connected device
+  }
+}
+
+async function disableSyncEncryption() {
+  if (!confirm('Disable sync encryption? Entries will sync to Dropbox as plain text from now on.')) return;
+  sessionEncryptionKey = null;
+  await idbPut('sync_meta', { key: 'sync_encryption', enabled: false, saltB64: null });
+  alert('Sync encryption disabled.');
+}
+
+document.getElementById('btn-encryption-enable').addEventListener('click', enableSyncEncryption);
+document.getElementById('btn-encryption-unlock').addEventListener('click', enterEncryptionPassphraseThisSession);
+document.getElementById('btn-encryption-disable').addEventListener('click', disableSyncEncryption);
+
+/* ════════════════════════════════════════════════════════════════════
+   Dropbox cloud sync
+   Fully optional and additive — the app works indefinitely without ever
+   connecting. Set DROPBOX_CLIENT_ID below after registering a Scoped App
+   (Access type: "App folder") in the Dropbox App Console — see the setup
+   checklist in the project plan for exact steps and redirect URIs to
+   register (this page's own URL, computed by getRedirectUri() below).
+   ════════════════════════════════════════════════════════════════════ */
+const DROPBOX_CLIENT_ID = 'YOUR_DROPBOX_APP_KEY';
+
+function dropboxConfigured() {
+  return !!DROPBOX_CLIENT_ID && !DROPBOX_CLIENT_ID.startsWith('YOUR_');
+}
+function getRedirectUri() {
+  return location.origin + location.pathname;
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ── PKCE helpers ─────────────────────────────────────────────────── */
+function base64url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let str = '';
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function randomString(len) {
+  return base64url(crypto.getRandomValues(new Uint8Array(len)).buffer);
+}
+async function sha256Base64Url(str) {
+  return base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)));
+}
+
+/* ── OAuth connect / token refresh ───────────────────────────────── */
+async function dropboxConnect() {
+  if (!dropboxConfigured()) {
+    alert('Dropbox isn\'t configured yet — set DROPBOX_CLIENT_ID in index.html after registering an app in the Dropbox App Console.');
+    return;
+  }
+  const codeVerifier = randomString(64);
+  const codeChallenge = await sha256Base64Url(codeVerifier);
+  const state = randomString(16);
+  sessionStorage.setItem('ginkgo-oauth-pending', JSON.stringify({ codeVerifier, state }));
+  const params = new URLSearchParams({
+    client_id: DROPBOX_CLIENT_ID,
+    response_type: 'code',
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    token_access_type: 'offline',
+    redirect_uri: getRedirectUri(),
+    state,
+  });
+  location.href = 'https://www.dropbox.com/oauth2/authorize?' + params.toString();
+}
+
+async function handleOAuthRedirect() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code) return;
+  history.replaceState({}, '', location.pathname);
+  const pendingRaw = sessionStorage.getItem('ginkgo-oauth-pending');
+  sessionStorage.removeItem('ginkgo-oauth-pending');
+  if (!pendingRaw) return;
+  const pending = JSON.parse(pendingRaw);
+  if (state !== pending.state) { console.error('Dropbox OAuth state mismatch — aborting'); return; }
+  try {
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        client_id: DROPBOX_CLIENT_ID,
+        code_verifier: pending.codeVerifier,
+        redirect_uri: getRedirectUri(),
+      }),
+    });
+    if (!res.ok) throw new Error('token exchange failed: ' + res.status);
+    const tok = await res.json();
+    await idbPut('sync_meta', {
+      key: 'dropbox_auth',
+      accessToken: tok.access_token,
+      accessTokenExpiresAt: Date.now() + tok.expires_in * 1000 - 120000,
+      refreshToken: tok.refresh_token,
+      accountId: tok.account_id,
+      connectedAt: new Date().toISOString(),
+    });
+    await idbDelete('sync_meta', 'dropbox_cursor'); // a fresh grant starts a fresh sync relationship
+    updateSyncStatus('syncing');
+    scheduleSync();
+  } catch (e) {
+    console.error('Dropbox connect failed', e);
+    updateSyncStatus('error', 'connect failed');
+  }
+}
+
+async function ensureValidAccessToken() {
+  const auth = await idbGet('sync_meta', 'dropbox_auth');
+  if (!auth) return null;
+  if (Date.now() < auth.accessTokenExpiresAt) return auth.accessToken;
+  try {
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: auth.refreshToken,
+        client_id: DROPBOX_CLIENT_ID,
+      }),
+    });
+    if (!res.ok) throw new Error('refresh failed: ' + res.status);
+    const tok = await res.json();
+    auth.accessToken = tok.access_token;
+    auth.accessTokenExpiresAt = Date.now() + tok.expires_in * 1000 - 120000;
+    await idbPut('sync_meta', auth);
+    return auth.accessToken;
+  } catch (e) {
+    console.error('Dropbox token refresh failed — treating as disconnected', e);
+    await idbDelete('sync_meta', 'dropbox_auth');
+    updateSyncStatus('error', 'reconnect needed');
+    return null;
+  }
+}
+
+async function isDropboxConnected() { return !!(await idbGet('sync_meta', 'dropbox_auth')); }
+
+async function disconnectDropbox() {
+  await idbDelete('sync_meta', 'dropbox_auth');
+  await idbDelete('sync_meta', 'dropbox_cursor');
+  updateSyncStatus('disconnected');
+}
+
+/* ── Raw Dropbox API v2 calls ─────────────────────────────────────── */
+async function dbxApiCall(url, opts) {
+  const token = await ensureValidAccessToken();
+  if (!token) { const e = new Error('not connected'); e.notConnected = true; throw e; }
+  const res = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + token } });
+  if (res.status === 429) {
+    const e = new Error('rate limited');
+    e.isRateLimit = true;
+    e.retryAfter = Number(res.headers.get('Retry-After')) || 5;
+    throw e;
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    const e = new Error('Dropbox API error ' + res.status + ': ' + body);
+    e.status = res.status; e.body = body;
+    throw e;
+  }
+  return res;
+}
+
+async function dbxUpload(path, content, mode) {
+  const res = await dbxApiCall('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': JSON.stringify({ path, mode, mute: true }) },
+    body: new TextEncoder().encode(content),
+  });
+  return res.json();
+}
+async function dbxDownload(path) {
+  const res = await dbxApiCall('https://content.dropboxapi.com/2/files/download', {
+    method: 'POST',
+    headers: { 'Dropbox-API-Arg': JSON.stringify({ path }) },
+  });
+  return res.text();
+}
+async function dbxDelete(path) {
+  try {
+    await dbxApiCall('https://api.dropboxapi.com/2/files/delete_v2', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }),
+    });
+  } catch (e) {
+    if (e.status === 409) return; // already gone remotely — fine
+    throw e;
+  }
+}
+async function dbxListFolder(cursor) {
+  const url = cursor ? 'https://api.dropboxapi.com/2/files/list_folder/continue' : 'https://api.dropboxapi.com/2/files/list_folder';
+  const body = cursor ? { cursor } : { path: '', recursive: true, include_deleted: true };
+  const res = await dbxApiCall(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return res.json();
+}
+
+/* ── File format: a small frontmatter block + the raw markdown body ── */
+function remotePathFor(meta) {
+  const d = new Date(meta.createdAt);
+  return `/${d.getFullYear()}/${dateKey(d)}-${meta.id}.md`;
+}
+function buildFileContent(meta, content) {
+  return `---\nid: ${meta.id}\ncreatedAt: ${meta.createdAt}\nupdatedAt: ${meta.updatedAt}\n---\n${content}`;
+}
+function parseFileContent(raw) {
+  const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!m) return { id: null, createdAt: null, updatedAt: null, content: raw };
+  const fm = m[1];
+  const get = (key) => { const mm = fm.match(new RegExp('^' + key + ':\\s*(.*)$', 'm')); return mm ? mm[1].trim() : null; };
+  return { id: get('id'), createdAt: get('createdAt'), updatedAt: get('updatedAt'), content: m[2] };
+}
+
+/* ── Push: local dirty/tombstoned rows → Dropbox ─────────────────── */
+async function pushDirtyAndTombstoned() {
+  const dirty = [], tombstoned = [];
+  await idbCursor('entries_meta', 'by_syncState', IDBKeyRange.only('dirty'), 'next', (c) => { dirty.push(c.value); return true; });
+  await idbCursor('entries_meta', 'by_syncState', IDBKeyRange.only('tombstone'), 'next', (c) => { tombstoned.push(c.value); return true; });
+
+  for (const meta of dirty) {
+    if (!meta.remotePath) meta.remotePath = remotePathFor(meta);
+    const body = await idbGet('entries_body', meta.id);
+    if (!body) continue;
+    try {
+      const uploadBody = await maybeEncryptForUpload(body.content);
+      const fileContent = buildFileContent(meta, uploadBody);
+      const mode = meta.remoteRev ? { '.tag': 'update', update: meta.remoteRev } : 'add';
+      const result = await dbxUpload(meta.remotePath, fileContent, mode);
+      meta.remoteRev = result.rev;
+      meta.lastSyncedAt = new Date().toISOString();
+      meta.lastSyncedHash = meta.contentHash;
+      meta.syncState = 'clean';
+      await idbPut('entries_meta', meta);
+    } catch (e) {
+      if (e.isRateLimit) { await sleep(e.retryAfter * 1000); return; }
+      if (e.status === 409) continue; // conflict — the next pull will reconcile it
+      console.error('Dropbox push failed for', meta.id, e);
+    }
+  }
+  for (const meta of tombstoned) {
+    if (!meta.remotePath) continue; // never synced remotely — nothing to delete there
+    try { await dbxDelete(meta.remotePath); }
+    catch (e) {
+      if (e.isRateLimit) { await sleep(e.retryAfter * 1000); return; }
+      console.error('Dropbox delete failed for', meta.id, e);
+    }
+  }
+}
+
+/* ── Pull: Dropbox → local, with conflict resolution ─────────────── */
+async function handleRemoteEntry(entry) {
+  const path = entry.path_lower || entry.path_display;
+  if (!path) return;
+  let local = null;
+  await idbCursor('entries_meta', 'by_remotePath', IDBKeyRange.only(path), 'next', (c) => { local = c.value; return false; });
+
+  if (entry['.tag'] === 'deleted') {
+    if (!local) return; // created and deleted elsewhere before this device ever saw it
+    if (local.syncState === 'dirty') {
+      // deletion-vs-edit conflict: keep the edit, never destroy unsaved content
+      local.remoteRev = null;
+      await idbPut('entries_meta', local);
+    } else if (local.syncState !== 'tombstone') {
+      local.syncState = 'tombstone';
+      local.deletedAt = new Date().toISOString();
+      await idbPut('entries_meta', local);
+    }
+    return;
+  }
+
+  if (local && local.remoteRev === entry.rev) return; // already in sync
+
+  const raw = await dbxDownload(path);
+  const parsed = parseFileContent(raw);
+  parsed.content = await maybeDecryptFromDownload(parsed.content);
+  const { title, preview } = deriveTitleAndPreview(parsed.content);
+  const thumb = await extractThumbnail(parsed.content);
+  const contentHash = await sha256Hex(parsed.content);
+
+  if (!local) {
+    const id = parsed.id || genId();
+    const createdAt = parsed.createdAt || entry.client_modified || new Date().toISOString();
+    const d = new Date(createdAt);
+    const meta = {
+      id, createdAt, updatedAt: parsed.updatedAt || createdAt,
+      date: dateKey(d), monthDay: monthDayKey(d),
+      title, preview, thumbnail: thumb,
+      syncState: 'clean', contentHash,
+      remotePath: path, remoteRev: entry.rev,
+      lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash,
+      deletedAt: null, conflictOf: null,
+    };
+    await idbPut('entries_meta', meta);
+    await idbPut('entries_body', { id, content: parsed.content });
+    return;
+  }
+
+  if (local.syncState === 'clean') {
+    // simple remote-side update, no local edits to protect
+    Object.assign(local, { title, preview, thumbnail: thumb, contentHash,
+      updatedAt: parsed.updatedAt || local.updatedAt, remoteRev: entry.rev,
+      lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash });
+    await idbPut('entries_meta', local);
+    await idbPut('entries_body', { id: local.id, content: parsed.content });
+    return;
+  }
+
+  // local.syncState === 'dirty' AND remote changed since last sync — a true conflict.
+  const localUpdated = new Date(local.updatedAt).getTime();
+  const remoteUpdated = new Date(parsed.updatedAt || entry.client_modified || 0).getTime();
+  if (remoteUpdated > localUpdated) {
+    // Remote wins and keeps this id/path. The local edit is never discarded —
+    // it becomes a new, separate entry the user can see and reconcile manually.
+    const localBody = await idbGet('entries_body', local.id);
+    const conflictId = genId();
+    const conflictMeta = { ...local,
+      id: conflictId,
+      title: (local.title || 'untitled') + ' (conflict copy)',
+      remotePath: null, remoteRev: null,
+      syncState: 'dirty', conflictOf: local.id,
+      lastSyncedAt: null, lastSyncedHash: null,
+    };
+    await idbPut('entries_meta', conflictMeta);
+    await idbPut('entries_body', { id: conflictId, content: localBody ? localBody.content : '' });
+
+    Object.assign(local, { title, preview, thumbnail: thumb, contentHash,
+      updatedAt: parsed.updatedAt || local.updatedAt, remoteRev: entry.rev, syncState: 'clean',
+      lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash });
+    await idbPut('entries_meta', local);
+    await idbPut('entries_body', { id: local.id, content: parsed.content });
+  } else {
+    // Local wins — stays dirty so the next push overwrites Dropbox's copy.
+    // Still adopt the new rev, or that next push's optimistic-concurrency
+    // check would fail against a rev Dropbox no longer has.
+    local.remoteRev = entry.rev;
+    await idbPut('entries_meta', local);
+  }
+}
+
+async function pullFromDropbox() {
+  const cursorRow = await idbGet('sync_meta', 'dropbox_cursor');
+  let cursor = cursorRow ? cursorRow.cursor : null;
+  let hasMore = true;
+  while (hasMore) {
+    let page;
+    try { page = await dbxListFolder(cursor); }
+    catch (e) {
+      if (e.isRateLimit) { await sleep(e.retryAfter * 1000); return; }
+      throw e;
+    }
+    for (const entry of page.entries) {
+      try { await handleRemoteEntry(entry); }
+      catch (e) {
+        if (e.isRateLimit) throw e;
+        console.error('Failed to process remote entry', entry.path_lower, e);
+      }
+    }
+    cursor = page.cursor;
+    await idbPut('sync_meta', { key: 'dropbox_cursor', cursor, cursorUpdatedAt: Date.now() });
+    hasMore = page.has_more;
+  }
+}
+
+/* ── Orchestration ────────────────────────────────────────────────── */
+let syncInFlight = null;
+let syncQueued = false;
+
+function scheduleSync() {
+  isDropboxConnected().then(connected => {
+    if (!connected) return;
+    if (syncInFlight) { syncQueued = true; return; }
+    syncInFlight = runSync().finally(() => {
+      syncInFlight = null;
+      if (syncQueued) { syncQueued = false; scheduleSync(); }
+    });
+  });
+}
+
+async function runSync() {
+  try {
+    updateSyncStatus('syncing');
+    const encSettings = await getSyncEncryptionSettings();
+    if (!encSettings.saltB64) await fetchEncryptionSaltFromDropbox(); // adopt encryption from another device, if any
+    await pullFromDropbox();
+    await pushDirtyAndTombstoned();
+    await idbPut('sync_meta', { key: 'last_sync', lastPushAt: new Date().toISOString(), lastPullAt: new Date().toISOString(), lastError: null });
+    updateSyncStatus('synced');
+    await renderCalendar();
+    await renderInitialList();
+  } catch (e) {
+    if (e.notConnected) return;
+    console.error('Ginkgo sync failed', e);
+    await idbPut('sync_meta', { key: 'last_sync', lastError: String((e && e.message) || e) });
+    updateSyncStatus('error');
+  }
+}
+
+async function updateSyncStatus(state, msg) {
+  const el = document.getElementById('sync-status');
+  el.classList.toggle('error', state === 'error');
+  if (state === 'syncing') el.textContent = 'syncing…';
+  else if (state === 'synced') el.textContent = 'synced';
+  else if (state === 'error') el.textContent = msg || 'sync error — tap to retry';
+  else if (state === 'disconnected') el.textContent = 'connect dropbox';
+}
+
+async function refreshSyncStatusOnLoad() {
+  if (await isDropboxConnected()) updateSyncStatus('synced');
+  else updateSyncStatus('disconnected');
+}
+
+document.getElementById('sync-status').addEventListener('click', async () => {
+  if (await isDropboxConnected()) {
+    if (confirm('Disconnect Dropbox sync? Entries already saved stay on this device.')) await disconnectDropbox();
+  } else {
+    dropboxConnect();
+  }
+});
+
+window.addEventListener('online', scheduleSync);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(); });
+setInterval(scheduleSync, 5 * 60 * 1000);
+
+/* ════════════════════════════════════════════════════════════════════
+   Export / import — a real, portable database of individual .md files.
+   This is the durability backstop the Dropbox sync design leans on (see
+   the iOS storage-eviction note), and it directly delivers the "database
+   of markdown files" idea for anyone who never connects Dropbox at all.
+   No ZIP library is used — a minimal STORE-method (uncompressed) ZIP
+   writer is all that's needed, consistent with this project's
+   zero-dependency, no-build-step convention.
+   ════════════════════════════════════════════════════════════════════ */
+function crc32(bytes) {
+  if (!crc32.table) {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    crc32.table = table;
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ crc32.table[(crc ^ bytes[i]) & 0xFF];
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function dosDateTime(d) {
+  const time = ((d.getHours() & 0x1f) << 11) | ((d.getMinutes() & 0x3f) << 5) | ((d.getSeconds() >> 1) & 0x1f);
+  const date = (((d.getFullYear() - 1980) & 0x7f) << 9) | (((d.getMonth() + 1) & 0xf) << 5) | (d.getDate() & 0x1f);
+  return { time, date };
+}
+function u16(n) { return [n & 0xff, (n >> 8) & 0xff]; }
+function u32(n) { return [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff]; }
+
+function buildZip(files) {
+  const enc = new TextEncoder();
+  const { time, date } = dosDateTime(new Date());
+  const localParts = [], centralParts = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = enc.encode(file.name);
+    const data = file.data instanceof Uint8Array ? file.data : enc.encode(file.data);
+    const crc = crc32(data);
+
+    const localHeader = new Uint8Array([
+      0x50, 0x4b, 0x03, 0x04,
+      ...u16(20), ...u16(0), ...u16(0),
+      ...u16(time), ...u16(date),
+      ...u32(crc), ...u32(data.length), ...u32(data.length),
+      ...u16(nameBytes.length), ...u16(0),
+    ]);
+    const localEntry = new Uint8Array(localHeader.length + nameBytes.length + data.length);
+    localEntry.set(localHeader, 0);
+    localEntry.set(nameBytes, localHeader.length);
+    localEntry.set(data, localHeader.length + nameBytes.length);
+    localParts.push(localEntry);
+
+    const centralHeader = new Uint8Array([
+      0x50, 0x4b, 0x01, 0x02,
+      ...u16(20), ...u16(20), ...u16(0), ...u16(0),
+      ...u16(time), ...u16(date),
+      ...u32(crc), ...u32(data.length), ...u32(data.length),
+      ...u16(nameBytes.length), ...u16(0), ...u16(0),
+      ...u16(0), ...u16(0),
+      ...u32(0),
+      ...u32(offset),
+    ]);
+    const centralEntry = new Uint8Array(centralHeader.length + nameBytes.length);
+    centralEntry.set(centralHeader, 0);
+    centralEntry.set(nameBytes, centralHeader.length);
+    centralParts.push(centralEntry);
+
+    offset += localEntry.length;
+  }
+
+  const centralSize = centralParts.reduce((s, p) => s + p.length, 0);
+  const centralOffset = offset;
+  const eocd = new Uint8Array([
+    0x50, 0x4b, 0x05, 0x06,
+    ...u16(0), ...u16(0),
+    ...u16(files.length), ...u16(files.length),
+    ...u32(centralSize), ...u32(centralOffset),
+    ...u16(0),
+  ]);
+
+  const out = new Uint8Array(offset + centralSize + eocd.length);
+  let pos = 0;
+  for (const p of localParts) { out.set(p, pos); pos += p.length; }
+  for (const p of centralParts) { out.set(p, pos); pos += p.length; }
+  out.set(eocd, pos);
+  return out;
+}
+
+async function exportAllAsZip() {
+  const metas = [];
+  await idbCursor('entries_meta', null, null, 'next', (cursor) => {
+    if (cursor.value.syncState !== 'tombstone') metas.push(cursor.value);
+    return true;
+  });
+  if (!metas.length) { alert('No entries to export yet.'); return; }
+  const zipFiles = [];
+  for (const meta of metas) {
+    const body = await idbGet('entries_body', meta.id);
+    if (!body) continue;
+    const name = remotePathFor(meta).replace(/^\//, ''); // zip entry names shouldn't start with /
+    zipFiles.push({ name, data: buildFileContent(meta, body.content) });
+  }
+  const zipBytes = buildZip(zipFiles);
+  const blob = new Blob([zipBytes], { type: 'application/zip' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ginkgo-export-${dateKey(new Date())}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function importMarkdownFiles(fileList) {
+  let imported = 0, skipped = 0;
+  for (const file of fileList) {
+    if (!/\.md$/i.test(file.name)) { skipped++; continue; }
+    const raw = await file.text();
+    const parsed = parseFileContent(raw);
+    const id = parsed.id || genId();
+    const createdAt = parsed.createdAt || new Date(file.lastModified).toISOString();
+    const updatedAt = parsed.updatedAt || createdAt;
+    const existing = await idbGet('entries_meta', id);
+    // Never clobber a local copy that's already newer than what's being imported.
+    if (existing && new Date(existing.updatedAt).getTime() >= new Date(updatedAt).getTime()) { skipped++; continue; }
+    const { title, preview } = deriveTitleAndPreview(parsed.content);
+    const d = new Date(createdAt);
+    const meta = {
+      id, createdAt, updatedAt,
+      date: dateKey(d), monthDay: monthDayKey(d),
+      title, preview, thumbnail: await extractThumbnail(parsed.content),
+      syncState: 'dirty', contentHash: await sha256Hex(parsed.content),
+      remotePath: existing ? existing.remotePath : null,
+      remoteRev: existing ? existing.remoteRev : null,
+      lastSyncedAt: null, lastSyncedHash: null,
+      deletedAt: null, conflictOf: existing ? existing.conflictOf : null,
+    };
+    await idbPut('entries_meta', meta);
+    await idbPut('entries_body', { id, content: parsed.content });
+    imported++;
+  }
+  return { imported, skipped };
+}
+
+document.getElementById('btn-export-zip').addEventListener('click', exportAllAsZip);
+document.getElementById('btn-import-files').addEventListener('click', () => {
+  document.getElementById('import-input').click();
+});
+document.getElementById('import-input').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length) return;
+  const { imported, skipped } = await importMarkdownFiles(files);
+  showStatusMessage(`imported ${imported} entr${imported === 1 ? 'y' : 'ies'}${skipped ? `, skipped ${skipped}` : ''}.`);
+  await renderCalendar();
+  await renderInitialList();
+  if (typeof scheduleSync === 'function') scheduleSync();
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   Drawer / view toggling
+   ════════════════════════════════════════════════════════════════════ */
+function updateDrawerHandleChevron() {
+  const isOpen = document.body.classList.contains('drawer-open');
+  document.getElementById('drawer-handle-chevron').textContent = isOpen ? '›' : '‹';
+}
+function openDrawer() { document.body.classList.add('drawer-open'); updateDrawerHandleChevron(); }
+function closeDrawer() { document.body.classList.remove('drawer-open'); updateDrawerHandleChevron(); }
+// The drawer stays open across entry creation/opening — it's a push layout
+// now, not an overlay, so there's no reason to force it shut. The one
+// exception: below the narrow-viewport breakpoint (see the matching CSS
+// media query) it reverts to a dimming overlay, and leaving that open
+// would visually block the very entry the user just opened.
+const DRAWER_OVERLAY_BREAKPOINT = '(max-width: 700px)';
+function closeDrawerIfOverlay() {
+  if (window.matchMedia(DRAWER_OVERLAY_BREAKPOINT).matches) closeDrawer();
+}
+document.getElementById('drawer-handle').addEventListener('click', () => {
+  document.body.classList.contains('drawer-open') ? closeDrawer() : openDrawer();
+});
+// Only meaningfully interactive in the narrow-viewport overlay fallback
+// (pointer-events is off at wider widths, see CSS), but harmless to wire
+// unconditionally.
+document.getElementById('drawer-backdrop').addEventListener('click', closeDrawer);
+
+document.getElementById('btn-new-entry').addEventListener('click', () => createEntry(new Date()));
+
+function switchView(view) {
+  ['journal', 'search', 'trash'].forEach(v => {
+    document.getElementById(v + '-view').style.display = v === view ? '' : 'none';
+    document.getElementById('btn-view-' + v).classList.toggle('active', v === view);
+  });
+  document.getElementById('drawer-search-row').style.display = view === 'search' ? '' : 'none';
+  if (view === 'trash' && typeof renderTrash === 'function') renderTrash();
+}
+document.getElementById('btn-view-journal').addEventListener('click', () => switchView('journal'));
+document.getElementById('btn-view-search').addEventListener('click', () => { switchView('search'); document.getElementById('search-input').focus(); });
+document.getElementById('btn-view-trash').addEventListener('click', () => switchView('trash'));
+
+/* ════════════════════════════════════════════════════════════════════
+   Layout
+   ════════════════════════════════════════════════════════════════════ */
+function syncTopbarHeight() {
+  const h = document.getElementById('topbar').getBoundingClientRect().height;
+  document.documentElement.style.setProperty('--topbar-h', h + 'px');
+}
+window.addEventListener('resize', syncTopbarHeight);
+
+/* ════════════════════════════════════════════════════════════════════
+   Boot
+   ════════════════════════════════════════════════════════════════════ */
+(async function boot() {
+  syncTopbarHeight();
+  if (await hasAppLock()) showLockOverlay();
+  await renderCalendar();
+  await renderInitialList();
+  if (typeof renderOnThisDay === 'function') renderOnThisDay();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  await refreshSyncStatusOnLoad();
+  await handleOAuthRedirect(); // no-op unless we just landed back from Dropbox's consent screen
+  scheduleSync();
+
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {}); // reduces Safari's storage-eviction risk pre-install
+  }
+  maybeShowInstallHint();
+})();
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function maybeShowInstallHint() {
+  if (isStandalone() || !isIOS()) return;
+  if (localStorage.getItem('ginkgo-install-hint-dismissed')) return;
+  const banner = document.createElement('div');
+  banner.id = 'install-hint';
+  banner.innerHTML = 'Add Ginkgo to your Home Screen (Share → Add to Home Screen) for offline journaling. <button id="install-hint-dismiss">×</button>';
+  document.body.appendChild(banner);
+  document.getElementById('install-hint-dismiss').addEventListener('click', () => {
+    localStorage.setItem('ginkgo-install-hint-dismissed', '1');
+    banner.remove();
+  });
+}
+</script>
+</body>
+</html>
