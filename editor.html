@@ -929,6 +929,20 @@
   .image-chip:hover { opacity: 1; border-color: var(--muted); }
   .image-chip img { display: block; width: 28px; height: 28px; object-fit: cover; border-radius: 2px; }
   .cm-image-expanded { background: rgba(200,160,0,0.12); border-radius: 3px; outline: 1px dashed var(--border); }
+
+  /* ── Dateline chip — matches #preview p.preview-byline's muted styling
+     so write and preview mode read consistently. ── */
+  .dateline-chip {
+    display: inline-block;
+    font-size: 0.82em;
+    color: var(--muted);
+    opacity: 0.8;
+    cursor: pointer;
+    padding: 1px 2px;
+    border-radius: 3px;
+  }
+  .dateline-chip:hover { background: var(--border); opacity: 1; }
+  .cm-dateline-expanded { background: rgba(200,160,0,0.12); border-radius: 3px; outline: 1px dashed var(--border); }
   #image-hover-popup {
     position: fixed;
     z-index: 4000;
@@ -1635,12 +1649,6 @@
         <div class="keys-row"><kbd>Tab</kbd><span>jump past marks</span></div>
       </div>
       <div class="keys-group">
-        <div class="keys-group-title">file</div>
-        <div class="keys-row"><kbd>Ctrl+S</kbd><span>save</span></div>
-        <div class="keys-row"><kbd>Ctrl+Shift+O</kbd><span>open</span></div>
-        <div class="keys-row"><kbd>Ctrl+H</kbd> / <kbd>Cmd+Shift+F</kbd><span>find / replace</span></div>
-      </div>
-      <div class="keys-group">
         <div class="keys-group-title">view</div>
         <div class="keys-row"><kbd>Ctrl+Shift+A</kbd><span>write</span></div>
         <div class="keys-row"><kbd>Ctrl+Shift+S</kbd><span>split</span></div>
@@ -1648,7 +1656,7 @@
       </div>
       <div class="keys-group">
         <div class="keys-group-title">tools</div>
-        <div class="keys-row"><kbd>Ctrl+Shift+H</kbd><span>autohide</span></div>
+        <div class="keys-row"><kbd>Ctrl+H</kbd> / <kbd>Cmd+Shift+F</kbd><span>find / replace</span></div>
         <div class="keys-row"><kbd>Ctrl+Shift+F</kbd><span>focus</span></div>
         <div class="keys-row"><kbd>Ctrl+Shift+T</kbd><span>typewriter</span></div>
         <div class="keys-row"><kbd>Ctrl+Shift+G</kbd><span>zen mode</span></div>
@@ -2039,17 +2047,23 @@ class ImageChipWidget extends WidgetType {
 }
 
 const imagePlugin = ViewPlugin.fromClass(class {
-  constructor(view) { this.decorations = this._build(view); }
+  constructor(view) { this._recompute(view); }
   update(u) {
     if (u.docChanged || u.viewportChanged || u.selectionSet ||
         u.state.field(imageExpandedField) !== u.startState.field(imageExpandedField))
-      this.decorations = this._build(u.view);
+      this._recompute(u.view);
   }
-  _build(view) {
+  // Builds both the visual decorations and a matching "atomic" range set in
+  // one pass (same from/to boundaries) so a collapsed image chip is deleted
+  // in a single Backspace/Delete keystroke instead of the cursor stepping
+  // into the underlying base64 text first. Only collapsed ranges are atomic
+  // — an expanded (cursor-inside) range must stay normally editable.
+  _recompute(view) {
     const expanded = view.state.field(imageExpandedField);
     const sel = view.state.selection.main;
     const text = view.state.doc.toString();
-    const builder = new RangeSetBuilder();
+    const decoBuilder = new RangeSetBuilder();
+    const atomicBuilder = new RangeSetBuilder();
     IMAGE_RE.lastIndex = 0;
     let m;
     while ((m = IMAGE_RE.exec(text)) !== null) {
@@ -2057,16 +2071,95 @@ const imagePlugin = ViewPlugin.fromClass(class {
       const to = from + m[0].length;
       const cursorInside = sel.from < to && sel.to > from;
       if (expanded.has(from)) {
-        builder.add(from, to, Decoration.mark({ class: 'cm-image-expanded' }));
+        decoBuilder.add(from, to, Decoration.mark({ class: 'cm-image-expanded' }));
       } else if (!cursorInside) {
-        builder.add(from, to, Decoration.replace({
+        decoBuilder.add(from, to, Decoration.replace({
           widget: new ImageChipWidget(from, m[2], m[1]),
         }));
+        atomicBuilder.add(from, to, Decoration.replace({}));
       }
     }
-    return builder.finish();
+    this.decorations = decoBuilder.finish();
+    this.atomic = atomicBuilder.finish();
   }
-}, { decorations: v => v.decorations });
+}, {
+  decorations: v => v.decorations,
+  provide: plugin => EditorView.atomicRanges.of(view => view.plugin(plugin)?.atomic ?? Decoration.none),
+});
+
+// ── Dateline chip ────────────────────────────────────────────────────
+// Ginkgo's auto-inserted timestamp/location/weather line (see
+// formatEntryTimestamp in ginkgo/index.html) shouldn't read as ordinary
+// editable prose — collapse it to a small, non-editable, byline-styled
+// chip in write mode, same pattern as image chips above. The underlying
+// document text is untouched, so UPDATE_DATELINE's plain string
+// replace-in-place (used for background location/weather enrichment)
+// keeps working exactly as before regardless of collapsed/expanded state.
+const DATELINE_RE = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?$/m;
+
+const toggleDatelineExpanded = StateEffect.define();
+
+const datelineExpandedField = StateField.define({
+  create() { return false; },
+  update(value, tr) {
+    let next = value;
+    for (const e of tr.effects) if (e.is(toggleDatelineExpanded)) next = !next;
+    if (tr.selection && next) {
+      const m = tr.newDoc.toString().match(DATELINE_RE);
+      if (m) {
+        const from = m.index, to = from + m[0].length;
+        const sel = tr.newSelection.main;
+        if (!(sel.from <= to && sel.to >= from)) next = false;
+      } else {
+        next = false;
+      }
+    }
+    return next;
+  }
+});
+
+class DatelineWidget extends WidgetType {
+  constructor(text) { super(); this.text = text; }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'dateline-chip';
+    span.textContent = this.text;
+    span.title = 'click to edit';
+    return span;
+  }
+  eq(other) { return other.text === this.text; }
+  ignoreEvent() { return false; }
+}
+
+const datelinePlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this._recompute(view); }
+  update(u) {
+    if (u.docChanged || u.viewportChanged || u.selectionSet ||
+        u.state.field(datelineExpandedField) !== u.startState.field(datelineExpandedField))
+      this._recompute(u.view);
+  }
+  _recompute(view) {
+    const expanded = view.state.field(datelineExpandedField);
+    const text = view.state.doc.toString();
+    const decoBuilder = new RangeSetBuilder();
+    const atomicBuilder = new RangeSetBuilder();
+    const m = text.match(DATELINE_RE);
+    if (m) {
+      const from = m.index, to = from + m[0].length;
+      if (expanded) {
+        decoBuilder.add(from, to, Decoration.mark({ class: 'cm-dateline-expanded' }));
+      } else {
+        decoBuilder.add(from, to, Decoration.replace({ widget: new DatelineWidget(m[0]) }));
+        atomicBuilder.add(from, to, Decoration.replace({}));
+      }
+    }
+    this.decorations = decoBuilder.finish();
+    this.atomic = atomicBuilder.finish();
+  }
+}, {
+  decorations: v => v.decorations,
+  provide: plugin => EditorView.atomicRanges.of(view => view.plugin(plugin)?.atomic ?? Decoration.none),
+});
 
 function insertAnnotation() {
   if (!view) return;
@@ -2409,6 +2502,8 @@ function buildExtensions() {
     annotationPlugin,
     imageExpandedField,
     imagePlugin,
+    datelineExpandedField,
+    datelinePlugin,
     zenModePlugin,
     inlineFormattingPlugin,
     lineDecoPlugin,
@@ -2528,6 +2623,10 @@ function buildExtensions() {
             return true;
           }
         }
+        if (event.target.closest('.dateline-chip')) {
+          view.dispatch({ effects: toggleDatelineExpanded.of(true) });
+          return true;
+        }
         return false;
       },
       paste(event, view) {
@@ -2547,7 +2646,7 @@ function buildExtensions() {
       }
     }),
     EditorView.updateListener.of(onEditorUpdate),
-    placeholder('click + above to start a new entry.'),
+    placeholder('Click + to start a new entry.'),
     EditorView.theme({
       '&': { background: 'transparent', height: 'auto' },
       '&.cm-focused': { outline: 'none' },
