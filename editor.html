@@ -156,6 +156,14 @@
   { display: none !important; }
   body.embed-mode.preview-locked #preview { cursor: pointer; }
 
+  /* No entry is open yet (fresh launch, before "+" is clicked) — on top of
+     the readOnly CM6 state (see init()), block focus/click entirely so no
+     cursor can even appear. drawSelection() renders CM6's cursor as its own
+     DOM element (.cm-cursor), not the native caret, so it's hidden directly
+     rather than via caret-color. */
+  body.embed-mode.no-entry-open #editor-cm { pointer-events: none; }
+  body.embed-mode.no-entry-open .cm-cursor { display: none; }
+
   /* #quick-settings gets hoisted out from under the now-hidden #header at
      init time (see init()) so it can still render when toggled open — its
      own styling now makes it a full centered overlay (see below), so no
@@ -4978,7 +4986,10 @@ function init() {
   // No entry is open yet on first launch — block typing until Ginkgo loads
   // one via LOAD_CONTENT (new or existing), so an idle editor can't invite
   // keystrokes that would just be silently discarded (nothing to save to).
-  if (EMBED_MODE) view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(true)) });
+  if (EMBED_MODE) {
+    view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(true)) });
+    document.body.classList.add('no-entry-open');
+  }
 
   // Tell the parent we're ready to receive LOAD_CONTENT.
   if (window.parent && window.parent !== window) {
@@ -5082,6 +5093,7 @@ window.addEventListener('message', (e) => {
     setContent(msg.content || '');
     isDirty = false; // loading content isn't a user edit
     view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(false)) });
+    document.body.classList.remove('no-entry-open');
     if (msg.mode) setMode(msg.mode);
     // New entries land in write mode and should be immediately typeable —
     // without this, keyboard focus stays on whatever Ginkgo control (e.g.
