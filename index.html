@@ -706,13 +706,21 @@ const IMAGE_ONLY_LINE_RE = /^(!\[[^\]]*\]\([^)]*\)\s*)+$/;
 function deriveTitleAndPreview(content) {
   const lines = (content || '').split('\n');
   let idx = 0;
+  // New entries put the dateline before the title; skip it here too so it's
+  // never mistaken for the title. Older entries (dateline after the title)
+  // are handled further below, where the same check runs again.
+  while (idx < lines.length && lines[idx].trim() === '') idx++;
+  if (DATELINE_RE.test((lines[idx] || '').trim())) {
+    idx++;
+    while (idx < lines.length && lines[idx].trim() === '') idx++;
+  }
   let title = 'untitled';
-  const headingMatch = (lines[0] || '').match(/^#{1,2}\s+(.*)/);
+  const headingMatch = (lines[idx] || '').match(/^#{1,2}\s+(.*)/);
   if (headingMatch) {
     title = headingMatch[1].trim() || 'untitled';
-    idx = 1;
+    idx++;
   } else {
-    const firstNonEmpty = lines.find(l => l.trim() !== '' && !IMAGE_ONLY_LINE_RE.test(l.trim()));
+    const firstNonEmpty = lines.slice(idx).find(l => l.trim() !== '' && !IMAGE_ONLY_LINE_RE.test(l.trim()));
     if (firstNonEmpty) title = firstNonEmpty.trim();
   }
   while (idx < lines.length && lines[idx].trim() === '') idx++;
@@ -888,7 +896,7 @@ async function createEntry(date) {
     // several seconds, which used to leave currentEntryId unset the whole
     // time — e.g. blocking "attach photo" right after tapping "+").
     const timestampLine = formatEntryTimestamp(date);
-    const content = `## \n${timestampLine}\n\n`;
+    const content = `${timestampLine}\n## \n\n`;
     meta.contentHash = await sha256Hex(content);
     await idbPut('entries_meta', meta);
     await idbPut('entries_body', { id: meta.id, content });

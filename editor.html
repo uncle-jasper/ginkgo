@@ -5409,11 +5409,13 @@ window.addEventListener('message', (e) => {
     // the "+" button) was clicked to get here, so the first keystrokes
     // silently go nowhere (space re-activates that button instead).
     if (msg.mode === 'write') {
-      // A fresh entry's content is always the "## \n<dateline>\n\n"
-      // template — put the cursor right after "## " so typing immediately
-      // becomes the title, instead of landing at the document start.
+      // A fresh entry's content is always the "<dateline>\n## \n\n" template
+      // — put the cursor right after "## " (wherever it falls) so typing
+      // immediately becomes the title, instead of landing at the document
+      // start.
       const content = msg.content || '';
-      const cursorPos = content.startsWith('## ') ? 3 : 0;
+      const titleIdx = content.indexOf('## ');
+      const cursorPos = titleIdx !== -1 ? titleIdx + 3 : 0;
       view.dispatch({ selection: { anchor: cursorPos, head: cursorPos } });
       window.focus();
       view.focus();
