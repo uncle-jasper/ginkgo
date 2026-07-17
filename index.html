@@ -786,9 +786,9 @@ let pendingLoad = null;
 let currentEntryId = null;
 let currentEditorMode = null;
 
-function openInEditor(content, mode) {
+function openInEditor(content, mode, heroPosition) {
   currentEditorMode = mode;
-  const msg = { type: 'LOAD_CONTENT', content, mode };
+  const msg = { type: 'LOAD_CONTENT', content, mode, heroPosition: heroPosition || 'center' };
   if (iframeReady && editorFrame.contentWindow) {
     editorFrame.contentWindow.postMessage(msg, location.origin);
   } else {
@@ -970,7 +970,7 @@ async function openEntry(id, mode) {
   const [meta, body] = await Promise.all([idbGet('entries_meta', id), idbGet('entries_body', id)]);
   if (!meta || !body) return;
   currentEntryId = id;
-  openInEditor(body.content, mode || 'preview');
+  openInEditor(body.content, mode || 'preview', meta.heroImagePosition);
   closeDrawerIfOverlay();
 }
 
@@ -2326,6 +2326,11 @@ async function pushDirtyAndTombstoned() {
   await idbCursor('entries_meta', 'by_syncState', IDBKeyRange.only('dirty'), 'next', (c) => { dirty.push(c.value); return true; });
   await idbCursor('entries_meta', 'by_syncState', IDBKeyRange.only('tombstone'), 'next', (c) => { tombstoned.push(c.value); return true; });
 
+  // Track the last failure so the caller can correctly report "sync error"
+  // instead of "synced" — a per-item failure here used to be swallowed
+  // entirely (logged to console, nothing else), so the status bar claimed
+  // success even when an entry never actually made it to Dropbox.
+  let lastError = null;
   for (const meta of dirty) {
     if (!meta.remotePath) meta.remotePath = remotePathFor(meta);
     const body = await idbGet('entries_body', meta.id);
@@ -2334,26 +2339,44 @@ async function pushDirtyAndTombstoned() {
       const uploadBody = await maybeEncryptForUpload(body.content);
       const fileContent = buildFileContent(meta, uploadBody);
       const mode = meta.remoteRev ? { '.tag': 'update', update: meta.remoteRev } : 'add';
-      const result = await dbxUpload(meta.remotePath, fileContent, mode);
+      let result;
+      try {
+        result = await dbxUpload(meta.remotePath, fileContent, mode);
+      } catch (e) {
+        if (e.status === 409 && mode === 'add') {
+          // No remoteRev on file, but Dropbox says something's already
+          // there — most likely an earlier upload succeeded remotely but
+          // this device never recorded it locally (e.g. dropped right
+          // after the response). We're the source of truth for what
+          // should be at this path, so overwrite instead of retrying
+          // 'add' against the same 409 forever every sync cycle.
+          result = await dbxUpload(meta.remotePath, fileContent, { '.tag': 'overwrite' });
+        } else {
+          throw e;
+        }
+      }
       meta.remoteRev = result.rev;
       meta.lastSyncedAt = new Date().toISOString();
       meta.lastSyncedHash = meta.contentHash;
       meta.syncState = 'clean';
       await idbPut('entries_meta', meta);
     } catch (e) {
-      if (e.isRateLimit) { await sleep(e.retryAfter * 1000); return; }
-      if (e.status === 409) continue; // conflict — the next pull will reconcile it
+      if (e.isRateLimit) { await sleep(e.retryAfter * 1000); return { lastError }; }
+      if (e.status === 409) continue; // update-mode conflict — the next pull will reconcile it
       console.error('Dropbox push failed for', meta.id, e);
+      lastError = `push failed: ${(e && e.message) || e}`;
     }
   }
   for (const meta of tombstoned) {
     if (!meta.remotePath) continue; // never synced remotely — nothing to delete there
     try { await dbxDelete(meta.remotePath); }
     catch (e) {
-      if (e.isRateLimit) { await sleep(e.retryAfter * 1000); return; }
+      if (e.isRateLimit) { await sleep(e.retryAfter * 1000); return { lastError }; }
       console.error('Dropbox delete failed for', meta.id, e);
+      lastError = `delete failed: ${(e && e.message) || e}`;
     }
   }
+  return { lastError };
 }
 
 /* ── Pull: Dropbox → local, with conflict resolution ─────────────── */
@@ -2491,9 +2514,9 @@ async function runSync() {
     const encSettings = await getSyncEncryptionSettings();
     if (!encSettings.saltB64) await fetchEncryptionSaltFromDropbox(); // adopt encryption from another device, if any
     await pullFromDropbox();
-    await pushDirtyAndTombstoned();
-    await idbPut('sync_meta', { key: 'last_sync', lastPushAt: new Date().toISOString(), lastPullAt: new Date().toISOString(), lastError: null });
-    updateSyncStatus('synced');
+    const { lastError } = await pushDirtyAndTombstoned();
+    await idbPut('sync_meta', { key: 'last_sync', lastPushAt: new Date().toISOString(), lastPullAt: new Date().toISOString(), lastError: lastError || null });
+    updateSyncStatus(lastError ? 'error' : 'synced', lastError);
     await renderCalendar();
     await renderInitialList();
   } catch (e) {
