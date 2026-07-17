@@ -5436,6 +5436,14 @@ window.addEventListener('message', (e) => {
     // Ginkgo asking us to switch view mode without reloading content —
     // e.g. clicking outside the editor to read the formatted entry.
     if (msg.mode) setMode(msg.mode);
+  } else if (msg.type === 'CLEAR_ENTRY') {
+    // The open entry was deleted — blank the editor back to the same idle,
+    // non-interactive state as first launch, rather than leaving deleted
+    // content visible and seemingly still editable.
+    setContent('');
+    isDirty = false;
+    view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(true)) });
+    document.body.classList.add('no-entry-open');
   } else if (msg.type === 'TOGGLE_FOCUS') {
     if (focusActive) exitFocus(); else enterFocus();
   } else if (msg.type === 'UPDATE_DATELINE' && view) {
