@@ -354,6 +354,8 @@
   /* ── Trash ───────────────────────────────────────────────────────── */
   .trash-row-actions { display: flex; align-items: center; gap: 6px; padding: 0 10px; }
   .trash-row-actions button { font-size: 11px; padding: 4px 8px; }
+  .trash-delete-forever { color: #b04040; border-color: #b04040 !important; opacity: 0.7; }
+  .trash-delete-forever:hover { opacity: 1; }
 
   #list-bottom-sentinel { height: 1px; }
 
@@ -811,8 +813,22 @@ window.addEventListener('message', (e) => {
     setGinkgoFocus(!!msg.active);
   } else if (msg.type === 'MODE_CHANGED') {
     currentEditorMode = msg.mode;
+  } else if (msg.type === 'SET_HERO_POSITION') {
+    setHeroImagePosition(msg.position);
   }
 });
+
+async function setHeroImagePosition(position) {
+  if (!currentEntryId) return;
+  const meta = await idbGet('entries_meta', currentEntryId);
+  if (!meta) return;
+  meta.heroImagePosition = position;
+  meta.syncState = 'dirty';
+  meta.updatedAt = new Date().toISOString();
+  await idbPut('entries_meta', meta);
+  patchListRowInPlace(meta);
+  if (typeof scheduleSync === 'function') scheduleSync();
+}
 
 // Clicking anywhere outside the editor itself (topbar included) renders the
 // open entry in formatted mode until the user clicks back into it — the
@@ -870,6 +886,7 @@ async function newEntryMeta(date) {
     preview: '',
     thumbnail: null,
     tags: [],
+    heroImagePosition: 'center',
     syncState: 'dirty',
     contentHash: null,
     remotePath: null,
@@ -1547,8 +1564,26 @@ function renderTrashRow(meta) {
   restoreBtn.textContent = 'restore';
   restoreBtn.addEventListener('click', () => restoreEntry(meta.id));
   actions.appendChild(restoreBtn);
+  const deleteForeverBtn = document.createElement('button');
+  deleteForeverBtn.textContent = 'delete forever';
+  deleteForeverBtn.className = 'trash-delete-forever';
+  deleteForeverBtn.addEventListener('click', () => permanentlyDeleteEntry(meta.id));
+  actions.appendChild(deleteForeverBtn);
   row.appendChild(actions);
   return row;
+}
+
+async function permanentlyDeleteEntry(id) {
+  if (!confirm('Permanently delete this entry? This cannot be undone — it will not wait out the 30-day grace period.')) return;
+  if (currentEntryId === id) {
+    currentEntryId = null;
+    currentEditorMode = null;
+    if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'CLEAR_ENTRY' }, location.origin);
+  }
+  await idbDelete('entries_meta', id);
+  await idbDelete('entries_body', id);
+  await renderTrash();
+  showStatusMessage('deleted forever.');
 }
 
 async function renderTrash() {
@@ -2308,16 +2343,18 @@ function remotePathFor(meta) {
 }
 function buildFileContent(meta, content) {
   const tagsLine = (meta.tags && meta.tags.length) ? `tags: ${meta.tags.join(',')}\n` : '';
-  return `---\nid: ${meta.id}\ncreatedAt: ${meta.createdAt}\nupdatedAt: ${meta.updatedAt}\n${tagsLine}---\n${content}`;
+  const heroLine = (meta.heroImagePosition && meta.heroImagePosition !== 'center') ? `heroImagePosition: ${meta.heroImagePosition}\n` : '';
+  return `---\nid: ${meta.id}\ncreatedAt: ${meta.createdAt}\nupdatedAt: ${meta.updatedAt}\n${tagsLine}${heroLine}---\n${content}`;
 }
 function parseFileContent(raw) {
   const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!m) return { id: null, createdAt: null, updatedAt: null, tags: [], content: raw };
+  if (!m) return { id: null, createdAt: null, updatedAt: null, tags: [], heroImagePosition: 'center', content: raw };
   const fm = m[1];
   const get = (key) => { const mm = fm.match(new RegExp('^' + key + ':\\s*(.*)$', 'm')); return mm ? mm[1].trim() : null; };
   const tagsRaw = get('tags');
   const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
-  return { id: get('id'), createdAt: get('createdAt'), updatedAt: get('updatedAt'), tags, content: m[2] };
+  const heroImagePosition = get('heroImagePosition') || 'center';
+  return { id: get('id'), createdAt: get('createdAt'), updatedAt: get('updatedAt'), tags, heroImagePosition, content: m[2] };
 }
 
 /* ── Push: local dirty/tombstoned rows → Dropbox ─────────────────── */
@@ -2416,7 +2453,7 @@ async function handleRemoteEntry(entry) {
     const meta = {
       id, createdAt, updatedAt: parsed.updatedAt || createdAt,
       date: dateKey(d), monthDay: monthDayKey(d),
-      title, preview, thumbnail: thumb, tags: parsed.tags || [],
+      title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center',
       syncState: 'clean', contentHash,
       remotePath: path, remoteRev: entry.rev,
       lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash,
@@ -2429,7 +2466,7 @@ async function handleRemoteEntry(entry) {
 
   if (local.syncState === 'clean') {
     // simple remote-side update, no local edits to protect
-    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], contentHash,
+    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', contentHash,
       updatedAt: parsed.updatedAt || local.updatedAt, remoteRev: entry.rev,
       lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash });
     await idbPut('entries_meta', local);
@@ -2455,7 +2492,7 @@ async function handleRemoteEntry(entry) {
     await idbPut('entries_meta', conflictMeta);
     await idbPut('entries_body', { id: conflictId, content: localBody ? localBody.content : '' });
 
-    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], contentHash,
+    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', contentHash,
       updatedAt: parsed.updatedAt || local.updatedAt, remoteRev: entry.rev, syncState: 'clean',
       lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash });
     await idbPut('entries_meta', local);
@@ -2689,6 +2726,7 @@ async function importMarkdownFiles(fileList) {
       date: dateKey(d), monthDay: monthDayKey(d),
       title, preview, thumbnail: await extractThumbnail(parsed.content),
       tags: parsed.tags || (existing ? existing.tags : []) || [],
+      heroImagePosition: parsed.heroImagePosition || (existing ? existing.heroImagePosition : 'center') || 'center',
       syncState: 'dirty', contentHash: await sha256Hex(parsed.content),
       remotePath: existing ? existing.remotePath : null,
       remoteRev: existing ? existing.remoteRev : null,

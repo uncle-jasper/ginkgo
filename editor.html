@@ -386,15 +386,29 @@
   }
   #preview.visible { display: block; }
   .preview-inner { max-width: 68ch; margin: 0 auto; }
+  .preview-hero-wrap { position: relative; margin-bottom: 24px; }
   .preview-hero-image {
     display: block;
     width: 100%;
     max-height: 420px;
     object-fit: cover;
     border-radius: 12px;
-    margin-bottom: 24px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   }
+  .hero-position-controls {
+    position: absolute; bottom: 10px; right: 10px;
+    display: flex; gap: 4px;
+    background: rgba(0,0,0,0.45); border-radius: 8px; padding: 4px;
+    opacity: 0; transition: opacity 0.15s;
+  }
+  .preview-hero-wrap:hover .hero-position-controls { opacity: 1; }
+  .hero-position-controls button {
+    all: unset; cursor: pointer; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: rgba(255,255,255,0.7); border-radius: 5px;
+  }
+  .hero-position-controls button:hover { background: rgba(255,255,255,0.2); color: #fff; }
+  .hero-position-controls button.active { background: rgba(255,255,255,0.35); color: #fff; }
   #preview p.preview-byline {
     font-size: 0.78em;
     color: var(--muted);
@@ -3230,6 +3244,13 @@ function extractByline(md) {
   return { content, bylineText: m[0] };
 }
 
+// Which part of a large/portrait hero image to keep in frame — object-fit:
+// cover centers by default, which often crops out the actual subject.
+// Persisted per-entry by Ginkgo (entries_meta.heroImagePosition), sent down
+// via LOAD_CONTENT's heroPosition field.
+let heroPositionPref = 'center';
+const HERO_POSITIONS = { top: 'center top', center: 'center center', bottom: 'center bottom' };
+
 function renderPreview() {
   const prev = document.getElementById('preview');
   if (!prev.classList.contains('visible')) return;
@@ -3239,7 +3260,14 @@ function renderPreview() {
   // attribute values), so quote-escape on top of it here.
   const escAttr = s => escapeHtml(s).replace(/"/g, '&quot;');
   const heroHtml = heroSrc
-    ? `<img class="preview-hero-image" src="${escAttr(heroSrc)}" alt="${escAttr(heroAlt)}">`
+    ? `<div class="preview-hero-wrap">
+        <img class="preview-hero-image" style="object-position:${HERO_POSITIONS[heroPositionPref] || HERO_POSITIONS.center}" src="${escAttr(heroSrc)}" alt="${escAttr(heroAlt)}">
+        <div class="hero-position-controls">
+          <button data-pos="top" class="${heroPositionPref === 'top' ? 'active' : ''}" title="show top of photo">⬆</button>
+          <button data-pos="center" class="${heroPositionPref === 'center' ? 'active' : ''}" title="show center of photo">●</button>
+          <button data-pos="bottom" class="${heroPositionPref === 'bottom' ? 'active' : ''}" title="show bottom of photo">⬇</button>
+        </div>
+      </div>`
     : '';
   const bylineHtml = bylineText ? `<p class="preview-byline">${escapeHtml(bylineText)}</p>` : '';
   // parseMarkdown now handles annotation stripping internally
@@ -5401,6 +5429,7 @@ window.addEventListener('message', (e) => {
   if (msg.type === 'LOAD_CONTENT') {
     setContent(msg.content || '');
     isDirty = false; // loading content isn't a user edit
+    heroPositionPref = msg.heroPosition || 'center';
     view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(false)) });
     document.body.classList.remove('no-entry-open');
     if (msg.mode) setMode(msg.mode);
@@ -5464,8 +5493,24 @@ window.addEventListener('message', (e) => {
   }
 });
 
-// Click a rendered preview to jump into edit mode.
-document.getElementById('preview').addEventListener('click', () => {
+function setHeroPosition(pos) {
+  heroPositionPref = pos;
+  renderPreview();
+  if (EMBED_MODE && window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'SET_HERO_POSITION', position: pos }, location.origin);
+  }
+}
+
+// Click a rendered preview to jump into edit mode — except the hero image's
+// own reposition controls, which stopPropagation so they don't also trigger
+// the mode switch.
+document.getElementById('preview').addEventListener('click', (e) => {
+  const posBtn = e.target.closest('.hero-position-controls button');
+  if (posBtn) {
+    e.stopPropagation();
+    setHeroPosition(posBtn.dataset.pos);
+    return;
+  }
   if (currentMode === 'preview') {
     setMode('write');
     if (view) view.focus();
