@@ -1784,8 +1784,10 @@ function hideLockOverlay() { document.getElementById('lock-overlay').style.displ
 
 async function attemptPinUnlock() {
   const pin = document.getElementById('lock-pin-input').value;
-  if (await verifyAppLockPin(pin)) hideLockOverlay();
-  else {
+  if (await verifyAppLockPin(pin)) {
+    hideLockOverlay();
+    maybePromptForSyncPassphrase();
+  } else {
     document.getElementById('lock-error').textContent = 'Incorrect PIN.';
     document.getElementById('lock-pin-input').value = '';
   }
@@ -2069,6 +2071,21 @@ async function enterEncryptionPassphraseThisSession() {
   if (!passphrase) return;
   sessionEncryptionKey = await deriveEncryptionKey(passphrase, base64ToBytes(settings.saltB64));
   alert('Passphrase set for this session.');
+  scheduleSync();
+}
+
+// Fires right after the app becomes usable each session (post-PIN-unlock,
+// or immediately at boot if no PIN is set) rather than requiring a manual
+// trip into Settings — but only when there's actually something to ask for
+// (encryption on) and the app doesn't already know it (fresh session).
+// Still a fully separate secret from the PIN — this doesn't touch that.
+async function maybePromptForSyncPassphrase() {
+  if (sessionEncryptionKey) return;
+  const settings = await getSyncEncryptionSettings();
+  if (!settings.enabled || !settings.saltB64) return;
+  const passphrase = prompt('Enter your sync encryption passphrase to resume encrypted sync:');
+  if (!passphrase) return;
+  sessionEncryptionKey = await deriveEncryptionKey(passphrase, base64ToBytes(settings.saltB64));
   scheduleSync();
 }
 
@@ -2893,7 +2910,13 @@ window.addEventListener('resize', syncTopbarHeight);
    ════════════════════════════════════════════════════════════════════ */
 (async function boot() {
   syncTopbarHeight();
-  if (await hasAppLock()) showLockOverlay();
+  if (await hasAppLock()) {
+    showLockOverlay();
+  } else {
+    // No PIN gate in the way — safe to ask right away rather than waiting
+    // on a PIN-unlock event that will never come.
+    maybePromptForSyncPassphrase();
+  }
   refreshLockButtonVisibility();
   await renderCalendar();
   await renderInitialList();
