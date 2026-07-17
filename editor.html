@@ -5452,6 +5452,19 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'INSERT_AT_CURSOR' && view) {
     view.dispatch(view.state.replaceSelection(msg.text || ''));
     view.focus();
+  } else if (msg.type === 'INSERT_PHOTO' && view) {
+    // The first photo in an entry goes above the dateline, matching where
+    // it ends up as the "hero" image once rendered in preview — later
+    // photos just land wherever the cursor currently is, like any other
+    // insertion.
+    const doc = view.state.doc.toString();
+    const hasExistingImage = /!\[([^\]]*)\]\(([^)]+)\)/.test(doc);
+    if (!hasExistingImage) {
+      view.dispatch({ changes: { from: 0, to: 0, insert: msg.markdown + '\n\n' } });
+    } else {
+      view.dispatch(view.state.replaceSelection(`\n${msg.markdown}\n`));
+    }
+    view.focus();
   } else if (msg.type === 'OPEN_PANEL') {
     if (justWriteActive) return;
     if (msg.panel === 'style') {

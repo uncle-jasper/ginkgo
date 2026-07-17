@@ -1081,7 +1081,7 @@ document.getElementById('photo-input').addEventListener('change', async (e) => {
   try {
     const dataUri = await resizeFileToDataUri(file, 1600, 0.8);
     if (editorFrame.contentWindow) {
-      editorFrame.contentWindow.postMessage({ type: 'INSERT_AT_CURSOR', text: `\n![](${dataUri})\n` }, location.origin);
+      editorFrame.contentWindow.postMessage({ type: 'INSERT_PHOTO', markdown: `![](${dataUri})` }, location.origin);
     }
   } catch (err) {
     alert('Could not process that image.');
