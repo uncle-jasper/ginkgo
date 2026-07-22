@@ -1502,12 +1502,30 @@ async function refreshJournalViewAround(meta) {
    ════════════════════════════════════════════════════════════════════ */
 const TRASH_GRACE_DAYS = 30;
 
+// If another entry was forked from `id` as a conflict copy, deleting `id`
+// resolves that conflict — clear the flag so the survivor loses its red
+// "(conflict copy)" label instead of carrying it forever.
+async function clearConflictFlagsPointingAt(id) {
+  const toClear = [];
+  await idbCursor('entries_meta', null, null, 'next', (cursor) => {
+    if (cursor.value.conflictOf === id) toClear.push(cursor.value);
+    return true;
+  });
+  for (const other of toClear) {
+    other.conflictOf = null;
+    await idbPut('entries_meta', other);
+    const row = listEl.querySelector(`.entry-row[data-id="${other.id}"]`);
+    if (row) row.classList.remove('conflict');
+  }
+}
+
 async function deleteEntry(id) {
   const meta = await idbGet('entries_meta', id);
   if (!meta) return;
   meta.syncState = 'tombstone';
   meta.deletedAt = new Date().toISOString();
   await idbPut('entries_meta', meta);
+  await clearConflictFlagsPointingAt(id);
   if (currentEntryId === id) {
     currentEntryId = null;
     currentEditorMode = null;
@@ -1532,6 +1550,28 @@ async function restoreEntry(id) {
   await renderTrash();
   if (typeof scheduleSync === 'function') scheduleSync();
   showStatusMessage('restored.');
+}
+
+// One-time migration: before clearConflictFlagsPointingAt() existed, deleting
+// one side of a conflict pair left the surviving copy's `conflictOf` flag set
+// forever. Sweep once for entries whose conflictOf target is gone or already
+// tombstoned and clear the stale flag.
+async function repairOrphanedConflictFlags() {
+  const already = await idbGet('sync_meta', 'conflictFlagsRepaired');
+  if (already && already.value) return;
+  const flagged = [];
+  await idbCursor('entries_meta', null, null, 'next', (cursor) => {
+    if (cursor.value.conflictOf) flagged.push(cursor.value);
+    return true;
+  });
+  for (const meta of flagged) {
+    const source = await idbGet('entries_meta', meta.conflictOf);
+    if (!source || source.syncState === 'tombstone') {
+      meta.conflictOf = null;
+      await idbPut('entries_meta', meta);
+    }
+  }
+  await idbPut('sync_meta', { key: 'conflictFlagsRepaired', value: true });
 }
 
 async function purgeExpiredTombstones() {
@@ -2918,6 +2958,7 @@ window.addEventListener('resize', syncTopbarHeight);
     maybePromptForSyncPassphrase();
   }
   refreshLockButtonVisibility();
+  await repairOrphanedConflictFlags();
   await renderCalendar();
   await renderInitialList();
   if (typeof renderOnThisDay === 'function') renderOnThisDay();
