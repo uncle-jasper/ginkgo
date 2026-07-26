@@ -537,6 +537,7 @@
 
 <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none">
 <input type="file" id="import-input" accept=".md" multiple style="display:none">
+<input type="file" id="restore-backup-input" accept=".zip" style="display:none">
 
 <div id="lock-overlay">
   <div id="lock-box">
@@ -569,6 +570,7 @@
       <div class="privacy-section-desc">A dated snapshot of every entry, zipped and saved to a separate /backups folder in Dropbox (kept for 14 days) — a safety net against corruption or bad syncs, independent of the live per-entry sync above.</div>
       <div id="backup-status" class="privacy-section-desc">last backup: —</div>
       <button id="btn-backup-now">Back up now</button>
+      <button id="btn-restore-backup">Restore from backup (.zip)</button>
     </div>
     <button id="btn-privacy-close">Close</button>
   </div>
@@ -578,7 +580,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.1</div>
+    <div id="about-version">version 1.1.1</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <button id="btn-about-close">Close</button>
   </div>
@@ -1984,6 +1986,25 @@ document.getElementById('btn-backup-now').addEventListener('click', async (e) =>
     btn.textContent = 'Back up now';
   }
 });
+document.getElementById('btn-restore-backup').addEventListener('click', () => {
+  document.getElementById('restore-backup-input').click();
+});
+document.getElementById('restore-backup-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const btn = document.getElementById('btn-restore-backup');
+  btn.disabled = true;
+  btn.textContent = 'Restoring…';
+  try {
+    await restoreFromBackupZip(file);
+  } catch (err) {
+    alert('Restore failed: ' + ((err && err.message) || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Restore from backup (.zip)';
+  }
+});
 document.getElementById('more-export-entry').addEventListener('click', async () => {
   closeMoreMenu();
   await exportCurrentEntryAsMd();
@@ -2863,6 +2884,29 @@ function buildZip(files) {
   return out;
 }
 
+// Reads back exactly what buildZip writes: a sequence of local file headers
+// (STORE method, no data descriptors) followed by a central directory this
+// doesn't need to parse — walking local headers until the signature stops
+// matching (i.e. the central directory has been reached) is enough.
+function readZip(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const files = [];
+  let offset = 0;
+  while (offset + 4 <= bytes.length && dv.getUint32(offset, true) === 0x04034b50) {
+    const compMethod = dv.getUint16(offset + 8, true);
+    const compSize = dv.getUint32(offset + 18, true);
+    const nameLen = dv.getUint16(offset + 26, true);
+    const extraLen = dv.getUint16(offset + 28, true);
+    const nameStart = offset + 30;
+    const dataStart = nameStart + nameLen + extraLen;
+    const name = new TextDecoder().decode(bytes.subarray(nameStart, nameStart + nameLen));
+    if (compMethod !== 0) throw new Error(`"${name}" uses an unsupported compression method — only uncompressed (STORE) zips are supported.`);
+    files.push({ name, data: bytes.subarray(dataStart, dataStart + compSize) });
+    offset = dataStart + compSize;
+  }
+  return files;
+}
+
 async function exportAllAsZip() {
   const metas = [];
   await idbCursor('entries_meta', null, null, 'next', (cursor) => {
@@ -2953,36 +2997,88 @@ async function runBackupIfDue() {
   }
 }
 
+async function restoreFromBackupZip(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let zipFiles;
+  try {
+    zipFiles = readZip(bytes);
+  } catch (e) {
+    alert('Could not read that zip: ' + e.message);
+    return;
+  }
+  const mdFiles = zipFiles.filter(f => /\.md$/i.test(f.name));
+  if (!mdFiles.length) { alert('No .md entries found in that zip.'); return; }
+  const parsedList = mdFiles.map(f => parseFileContent(new TextDecoder().decode(f.data)));
+
+  const anyEncrypted = parsedList.some(p => isEncryptedPacked(p.content));
+  if (anyEncrypted && !sessionEncryptionKey) {
+    const settings = await getSyncEncryptionSettings();
+    if (!settings.saltB64) {
+      alert('This backup contains encrypted entries, but this device doesn\'t know the encryption salt yet. Connect Dropbox (or enable sync encryption) first so it can be fetched, then try restoring again.');
+      return;
+    }
+    const passphrase = prompt('This backup contains encrypted entries. Enter your sync encryption passphrase to restore them:');
+    if (!passphrase) return;
+    sessionEncryptionKey = await deriveEncryptionKey(passphrase, base64ToBytes(settings.saltB64));
+  }
+
+  let imported = 0, skipped = 0, failed = 0;
+  const fallbackCreatedAt = new Date().toISOString();
+  for (const parsed of parsedList) {
+    try {
+      const result = await ingestParsedEntry(parsed, fallbackCreatedAt);
+      if (result === 'imported') imported++; else skipped++;
+    } catch (e) {
+      console.error('Restore failed for an entry', e);
+      failed++;
+    }
+  }
+  await renderCalendar();
+  await renderInitialList();
+  if (typeof scheduleSync === 'function') scheduleSync();
+  alert(`Restore complete: ${imported} imported, ${skipped} skipped (already newer locally)${failed ? `, ${failed} failed` : ''}.`);
+}
+
+// Shared by importMarkdownFiles and restoreFromBackupZip — both are just
+// "here's a parsed frontmatter+content record, merge it into local storage."
+// Decrypts transparently if the content came from an encrypted sync/backup
+// (isEncryptedPacked is false for plain content, so this is a no-op then).
+async function ingestParsedEntry(parsed, fallbackCreatedAt) {
+  const content = isEncryptedPacked(parsed.content) ? await decryptString(parsed.content, sessionEncryptionKey) : parsed.content;
+  const id = parsed.id || genId();
+  const createdAt = parsed.createdAt || fallbackCreatedAt;
+  const updatedAt = parsed.updatedAt || createdAt;
+  const existing = await idbGet('entries_meta', id);
+  // Never clobber a local copy that's already newer than what's being imported.
+  if (existing && new Date(existing.updatedAt).getTime() >= new Date(updatedAt).getTime()) return 'skipped';
+  const { title, preview } = deriveTitleAndPreview(content);
+  const d = new Date(createdAt);
+  const meta = {
+    id, createdAt, updatedAt,
+    date: dateKey(d), monthDay: monthDayKey(d),
+    title, preview, thumbnail: await extractThumbnail(content),
+    tags: parsed.tags || (existing ? existing.tags : []) || [],
+    heroImagePosition: parsed.heroImagePosition || (existing ? existing.heroImagePosition : 'center') || 'center',
+    favorite: !!(parsed.favorite || (existing && existing.favorite)),
+    syncState: 'dirty', contentHash: await sha256Hex(content),
+    remotePath: existing ? existing.remotePath : null,
+    remoteRev: existing ? existing.remoteRev : null,
+    lastSyncedAt: null, lastSyncedHash: null,
+    deletedAt: null, conflictOf: existing ? existing.conflictOf : null,
+  };
+  await idbPut('entries_meta', meta);
+  await idbPut('entries_body', { id, content });
+  return 'imported';
+}
+
 async function importMarkdownFiles(fileList) {
   let imported = 0, skipped = 0;
   for (const file of fileList) {
     if (!/\.md$/i.test(file.name)) { skipped++; continue; }
     const raw = await file.text();
     const parsed = parseFileContent(raw);
-    const id = parsed.id || genId();
-    const createdAt = parsed.createdAt || new Date(file.lastModified).toISOString();
-    const updatedAt = parsed.updatedAt || createdAt;
-    const existing = await idbGet('entries_meta', id);
-    // Never clobber a local copy that's already newer than what's being imported.
-    if (existing && new Date(existing.updatedAt).getTime() >= new Date(updatedAt).getTime()) { skipped++; continue; }
-    const { title, preview } = deriveTitleAndPreview(parsed.content);
-    const d = new Date(createdAt);
-    const meta = {
-      id, createdAt, updatedAt,
-      date: dateKey(d), monthDay: monthDayKey(d),
-      title, preview, thumbnail: await extractThumbnail(parsed.content),
-      tags: parsed.tags || (existing ? existing.tags : []) || [],
-      heroImagePosition: parsed.heroImagePosition || (existing ? existing.heroImagePosition : 'center') || 'center',
-      favorite: !!(parsed.favorite || (existing && existing.favorite)),
-      syncState: 'dirty', contentHash: await sha256Hex(parsed.content),
-      remotePath: existing ? existing.remotePath : null,
-      remoteRev: existing ? existing.remoteRev : null,
-      lastSyncedAt: null, lastSyncedHash: null,
-      deletedAt: null, conflictOf: existing ? existing.conflictOf : null,
-    };
-    await idbPut('entries_meta', meta);
-    await idbPut('entries_body', { id, content: parsed.content });
-    imported++;
+    const result = await ingestParsedEntry(parsed, new Date(file.lastModified).toISOString());
+    if (result === 'imported') imported++; else skipped++;
   }
   return { imported, skipped };
 }
