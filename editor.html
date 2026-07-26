@@ -2492,6 +2492,11 @@ const lineDecoPlugin = ViewPlugin.fromClass(class {
 }, { decorations: v => v.decorations });
 
 // ── CodeMirror 6 setup ───────────────────────────────────────────────
+const IMG_DATA_URI_TEST_RE = /!\[[^\]]*\]\(data:image\/[a-zA-Z0-9.+-]+;base64,[^)]+\)/;
+const IMG_DATA_URI_REPLACE_RE = /!\[[^\]]*\]\(data:image\/[a-zA-Z0-9.+-]+;base64,[^)]+\)/g;
+function stripImageDataUrisForClipboard(text) {
+  return text.replace(IMG_DATA_URI_REPLACE_RE, '').replace(/\n{3,}/g, '\n\n');
+}
 const spellcheckCompartment = new Compartment();
 const readOnlyCompartment   = new Compartment();
 
@@ -2656,6 +2661,30 @@ function buildExtensions() {
           userEvent: 'input',
         });
         if (document.getElementById('chk-welcome').checked) typeStatusMessage('linked.');
+        return true;
+      },
+      // Photos are embedded inline as base64 data URIs (see resizeFileToDataUri),
+      // so a plain copy/cut of any selection spanning one hands off a
+      // multi-thousand-character string to whatever the user pastes into —
+      // drop each image from the clipboard text entirely (the real data URI
+      // stays untouched in the document itself; only the copy is affected).
+      copy(event, view) {
+        const { from, to } = view.state.selection.main;
+        if (from === to) return false;
+        const selected = view.state.sliceDoc(from, to);
+        if (!IMG_DATA_URI_TEST_RE.test(selected)) return false;
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', stripImageDataUrisForClipboard(selected));
+        return true;
+      },
+      cut(event, view) {
+        const { from, to } = view.state.selection.main;
+        if (from === to) return false;
+        const selected = view.state.sliceDoc(from, to);
+        if (!IMG_DATA_URI_TEST_RE.test(selected)) return false;
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', stripImageDataUrisForClipboard(selected));
+        view.dispatch({ changes: { from, to, insert: '' }, userEvent: 'delete.cut' });
         return true;
       }
     }),
