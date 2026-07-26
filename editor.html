@@ -5328,6 +5328,17 @@ function init() {
     document.body.classList.add('no-entry-open');
   }
 
+  // Belt-and-suspenders: pointer-events:none on #editor-cm (see CSS) keeps
+  // native click hit-testing off the editor, but CodeMirror's own mousedown
+  // handling can still land focus on .cm-content regardless of what native
+  // hit-testing resolved to — which would show a blinking cursor the user
+  // can't actually type into. Immediately undo any such focus while idle.
+  document.getElementById('editor-cm').addEventListener('focusin', () => {
+    if (document.body.classList.contains('no-entry-open') && document.activeElement) {
+      document.activeElement.blur();
+    }
+  });
+
   // Tell the parent we're ready to receive LOAD_CONTENT.
   if (window.parent && window.parent !== window) {
     embedReadySent = true;
@@ -5465,6 +5476,12 @@ window.addEventListener('message', (e) => {
       view.dispatch(view.state.replaceSelection(`\n${msg.markdown}\n`));
     }
     view.focus();
+  } else if (msg.type === 'EXPORT_HTML') {
+    if (msg.filenameBase) document.getElementById('filename-input').value = msg.filenameBase + '.md';
+    exportHtml();
+  } else if (msg.type === 'EXPORT_PDF') {
+    if (msg.filenameBase) document.getElementById('filename-input').value = msg.filenameBase + '.md';
+    exportPdf();
   } else if (msg.type === 'OPEN_PANEL') {
     if (justWriteActive) return;
     if (msg.panel === 'style') {
