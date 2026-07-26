@@ -2597,6 +2597,10 @@ async function pushDirtyAndTombstoned() {
 async function handleRemoteEntry(entry) {
   const path = entry.path_lower || entry.path_display;
   if (!path) return;
+  // Only per-entry .md files live at the sync layer — anything else in the
+  // app folder (the /backups zip snapshots, the /.ginkgo-salt file) is not
+  // a journal entry and must never be ingested as one.
+  if (!/\.md$/i.test(path)) return;
   let local = null;
   await idbCursor('entries_meta', 'by_remotePath', IDBKeyRange.only(path), 'next', (c) => { local = c.value; return false; });
 
