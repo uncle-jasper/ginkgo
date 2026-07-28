@@ -5508,8 +5508,13 @@ function init() {
     }
   } catch(e) {}
 
-  // Focus editor
-  setTimeout(() => { if (view) view.focus(); }, 50);
+  // Focus editor — but not with no entry open yet (EMBED_MODE always starts
+  // that way): LOAD_CONTENT's own handler focuses the editor once real
+  // content actually loads. This premature grab used to get immediately
+  // blurred back out anyway (see the no-entry-open focusin guard above),
+  // but the grab-then-blur cycle was racing Ginkgo's PIN-lock input for
+  // focus at boot and often won, leaving the PIN box unfocused.
+  if (!EMBED_MODE) setTimeout(() => { if (view) view.focus(); }, 50);
 
   // Library (recent files)
   initLibrary();
