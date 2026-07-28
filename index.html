@@ -115,11 +115,14 @@
      crt-on can stay "armed" after switching to a different theme (matches
      Tree's existing behavior — the checkbox state persists, only the
      visual effect is theme-gated) and must never bleed into other themes.
-     The scanline/vignette overlays are scoped to #topbar and #drawer only
-     (not a full-viewport overlay) since the iframe already renders its
-     own identical effect internally — a viewport-wide overlay here would
-     double up and darken the editor area. text-shadow is inherited, so
-     the glow reaches every text element in Ginkgo's chrome for free. ── */
+     The scanline/vignette overlay is one full-viewport layer on body here,
+     not scoped to #topbar/#drawer — a parent-level fixed overlay paints
+     on top of the iframe's rendered content too, so the whole screen reads
+     as one CRT tube instead of two separately-framed regions (editor pane
+     vignetting itself, drawer vignetting itself, with a visible seam where
+     they met). The editor's own internal overlay is suppressed via its
+     body.embed-mode guard to avoid doubling up. text-shadow is inherited,
+     so the glow reaches every text element in Ginkgo's chrome for free. ── */
   @keyframes ginkgo-crt-flicker {
     0%  { opacity: 1; } 92% { opacity: 1; } 93% { opacity: 0.93; }
     94% { opacity: 1; } 96% { opacity: 0.96; } 97% { opacity: 1; }
@@ -127,15 +130,21 @@
   }
   body[data-theme="terminal"].crt-on { animation: ginkgo-crt-flicker 8s infinite; text-shadow: 0 0 8px rgba(51,255,51,0.35); }
   body[data-theme="terminal"].crt-on.amber-crt { text-shadow: 0 0 8px rgba(255,176,0,0.35); }
-  body[data-theme="terminal"].crt-on #topbar::after, body[data-theme="terminal"].crt-on #drawer::after {
-    content: ''; position: absolute; inset: 0;
+  /* Doogie Journal: flat WordPerfect look, no phosphor glow (matches the editor's own choice) */
+  body[data-theme="terminal"].crt-on.doogie-journal { text-shadow: none; }
+  body[data-theme="terminal"].crt-on::after {
+    content: ''; position: fixed; inset: 0;
     background: repeating-linear-gradient(to bottom, transparent 0px, transparent 1px, rgba(0,0,0,0.25) 1px, rgba(0,0,0,0.25) 3px);
     pointer-events: none; z-index: 40;
   }
-  body[data-theme="terminal"].crt-on #drawer::before {
-    content: ''; position: absolute; inset: 0;
+  body[data-theme="terminal"].crt-on::before {
+    content: ''; position: fixed; inset: 0;
     background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.55) 100%);
     pointer-events: none; z-index: 39;
+  }
+  /* dialed back to match the editor's softer vignette against blue instead of black */
+  body[data-theme="terminal"].crt-on.doogie-journal::before {
+    background: radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.3) 100%);
   }
 
   /* ── Focus mode ──────────────────────────────────────────────────── */
@@ -580,7 +589,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.1.2</div>
+    <div id="about-version">version 1.2</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <button id="btn-about-close">Close</button>
   </div>
@@ -770,6 +779,7 @@ const THEME_PALETTE = {
 };
 
 const AMBER_CRT_PALETTE = { text: '#ffb000', accent: '#7a4a00', muted: '#a06a00', border: '#3a2200' };
+const DOOGIE_JOURNAL_PALETTE = { bg: '#0000AA', surface: '#0000AA', text: '#EAEAEA', accent: '#00AAAA', muted: '#7575CA', border: '#2323B4' };
 
 function applyTheme(settings) {
   if (!settings) return;
@@ -782,13 +792,16 @@ function applyTheme(settings) {
     p = THEME_PALETTE[settings.theme] || THEME_PALETTE.parchment;
   }
   const isAmber = settings.theme === 'terminal' && !!settings.amberCrt;
+  const isDoogie = settings.theme === 'terminal' && !isAmber && !!settings.doogieJournal;
   if (isAmber) p = { ...p, ...AMBER_CRT_PALETTE };
+  else if (isDoogie) p = { ...p, ...DOOGIE_JOURNAL_PALETTE };
   const root = document.documentElement.style;
   ['bg', 'surface', 'text', 'accent', 'muted', 'border'].forEach(k => { if (p[k]) root.setProperty('--' + k, p[k]); });
   if (settings.font) root.setProperty('--ui-font', settings.font);
   document.body.dataset.theme = settings.theme || 'parchment';
   document.body.classList.toggle('crt-on', !!settings.crtEnabled);
   document.body.classList.toggle('amber-crt', isAmber);
+  document.body.classList.toggle('doogie-journal', isDoogie);
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme && p.bg) metaTheme.setAttribute('content', p.bg);
 }
