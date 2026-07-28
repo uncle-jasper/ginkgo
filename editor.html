@@ -3738,7 +3738,12 @@ function enterFocus() {
   hint.classList.add('show');
   clearTimeout(focusHintTimer);
   focusHintTimer = setTimeout(() => hint.classList.remove('show'), 3500);
-  if (document.documentElement.requestFullscreen) {
+  // Embedded in Ginkgo, the outer shell owns the real Fullscreen API call for
+  // focus mode (see setGinkgoFocus in index.html) — two independent
+  // requestFullscreen() calls here and there raced and could leave the wrong
+  // document holding the fullscreen element, breaking the exit path entirely.
+  // Standalone use of this file still gets its own fullscreen as before.
+  if (!EMBED_MODE && document.documentElement.requestFullscreen) {
     document.documentElement.requestFullscreen().catch(() => {});
   }
   if (view) view.focus();
@@ -3750,7 +3755,7 @@ function exitFocus() {
   focusActive = false;
   document.body.classList.remove('focus-mode', 'toolbar-peek', 'statusbar-peek');
   document.getElementById('focus-hint').classList.remove('show');
-  if (document.fullscreenElement) {
+  if (!EMBED_MODE && document.fullscreenElement) {
     document.exitFullscreen().catch(() => {});
   }
   emitFocusModeChanged();

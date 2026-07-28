@@ -891,7 +891,12 @@ function setGinkgoFocus(active) {
   if (active) {
     closeDrawer(); // nothing but the writing area — also avoids the exit control overlapping drawer tabs
     if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
-  } else if (document.fullscreenElement === document.documentElement) {
+  } else if (document.fullscreenElement) {
+    // Not scoped to === document.documentElement: the fullscreen element can
+    // legitimately end up being something else (e.g. the iframe, if it ever
+    // grabs fullscreen on its own) and exitFullscreen() from the top-level
+    // document still correctly unwinds the whole chain regardless of exactly
+    // which element is currently holding it.
     document.exitFullscreen().catch(() => {});
   }
 }
@@ -903,6 +908,14 @@ document.getElementById('btn-focus').addEventListener('click', toggleFocusMode);
 document.getElementById('focus-exit').addEventListener('click', toggleFocusMode);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && ginkgoFocusActive) setGinkgoFocus(false);
+});
+// Belt-and-suspenders: if fullscreen ends for any reason we didn't initiate
+// ourselves (the browser's own Esc handling, an OS fullscreen shortcut, the
+// user dragging out via window controls, etc.), make sure the topbar/drawer
+// always come back instead of staying hidden with no way to reach the
+// toggle again. Mirrors the equivalent guard already in the editor.
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && ginkgoFocusActive) setGinkgoFocus(false);
 });
 
 /* ════════════════════════════════════════════════════════════════════
