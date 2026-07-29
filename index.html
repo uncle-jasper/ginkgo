@@ -3279,6 +3279,17 @@ window.addEventListener('resize', syncTopbarHeight);
   if (typeof renderOnThisDay === 'function') renderOnThisDay();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    // sw.js already calls skipWaiting()/clients.claim() unconditionally, so a
+    // new worker takes control of this page as soon as it activates — but the
+    // page itself keeps running whatever JS it already loaded. Reload once
+    // when that handoff happens so a fresh boot can't get stuck a version
+    // behind until the user manually refreshes.
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swRefreshing) return;
+      swRefreshing = true;
+      location.reload();
+    });
   }
   await refreshSyncStatusOnLoad();
   await handleOAuthRedirect(); // no-op unless we just landed back from Dropbox's consent screen
