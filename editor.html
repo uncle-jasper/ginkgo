@@ -1500,6 +1500,7 @@
           <option value="20">20px</option>
           <option value="22">22px</option>
           <option value="24">24px</option>
+          <option value="26">26px</option>
         </select>
       </div>
      </div>
@@ -2898,6 +2899,8 @@ function ensureCursorPadding() {
   const PADDING = 80; // px clearance above statusbar
   if (coords.bottom > scrollRect.bottom - PADDING) {
     scrollEl.scrollTop += coords.bottom - (scrollRect.bottom - PADDING);
+  } else if (coords.top < scrollRect.top + PADDING) {
+    scrollEl.scrollTop -= (scrollRect.top + PADDING) - coords.top;
   }
 }
 
