@@ -1960,7 +1960,17 @@ function showLockOverlay() {
   document.getElementById('lock-error').textContent = '';
   setTimeout(() => document.getElementById('lock-pin-input').focus(), 50);
 }
-function hideLockOverlay() { document.getElementById('lock-overlay').style.display = 'none'; }
+// Set by the service-worker controllerchange handler in boot() when a new
+// version activates while the lock overlay is up — reloading right then
+// would yank the page out from under someone mid-PIN-entry, wiping
+// whatever they'd typed and silently unfocusing the input. Deferred here
+// instead, so the reload lands right after a successful unlock instead of
+// during it.
+let pendingSwReload = false;
+function hideLockOverlay() {
+  document.getElementById('lock-overlay').style.display = 'none';
+  if (pendingSwReload) location.reload();
+}
 
 async function attemptPinUnlock() {
   const pin = document.getElementById('lock-pin-input').value;
@@ -3313,6 +3323,13 @@ window.addEventListener('resize', syncTopbarHeight);
     let swRefreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (swRefreshing) return;
+      // Reloading out from under someone still entering their PIN would wipe
+      // the field mid-keystroke and cost them a reclick — hold off until
+      // hideLockOverlay() runs the deferred reload instead.
+      if (document.getElementById('lock-overlay').style.display === 'flex') {
+        pendingSwReload = true;
+        return;
+      }
       swRefreshing = true;
       location.reload();
     });
