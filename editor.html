@@ -1667,6 +1667,18 @@
         </select>
       </div>
     </div>
+    <hr class="settings-divider">
+    <div class="settings-section">
+      <h3>Journal</h3>
+      <div class="settings-row" style="margin-top:8px;">
+        <label for="settings-calendar-type-select" style="min-width:36px;">calendar</label>
+        <select id="settings-calendar-type-select">
+          <option value="minimal">Minimal</option>
+          <option value="dynamic">Dynamic</option>
+        </select>
+      </div>
+      <p style="margin-top:6px; font-size:10px; color:var(--muted); opacity:0.6; line-height:1.6;">Dynamic fills each calendar day with a color or photo thumbnail once it has an entry.</p>
+    </div>
     <hr class="settings-divider" id="wp-settings-divider">
     <div class="settings-section" id="wp-settings-section">
       <h3>WordPress</h3>
@@ -3655,6 +3667,8 @@ document.getElementById('settings-font-size-select').addEventListener('change', 
   saveSettings();
 });
 
+document.getElementById('settings-calendar-type-select').addEventListener('change', saveSettings);
+
 // ── Autohide ─────────────────────────────────────────────────────────
 document.getElementById('chk-autohide').addEventListener('change', function() {
   autohideEnabled = this.checked;
@@ -4230,6 +4244,7 @@ function saveSettings() {
       mode:          currentMode,
       goalTarget:    goalTarget,
       goalBaseline:  goalBaseline,
+      calendarType:  document.getElementById('settings-calendar-type-select').value,
     }));
   } catch(e) {}
   emitThemeChanged();
@@ -4329,6 +4344,9 @@ function loadSettings() {
       goalTarget   = s.goalTarget;
       goalBaseline = s.goalBaseline || 0;
       document.getElementById('inp-goal').value = goalTarget;
+    }
+    if (s.calendarType) {
+      document.getElementById('settings-calendar-type-select').value = s.calendarType;
     }
     syncThemeUI();
     applyStatusBarVisibility();

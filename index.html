@@ -325,6 +325,11 @@
   .cal-cell.empty { cursor: default; }
   .cal-cell.empty:hover { background: none; }
   .cal-cell.today span { font-weight: 700; text-decoration: underline; }
+  .cal-cell.has-entry { background: var(--accent); }
+  .cal-cell.has-entry span { color: var(--bg); }
+  .cal-cell.has-thumb { background-size: cover; background-position: center; }
+  .cal-cell.has-thumb span { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.6); }
+  .cal-cell.has-entry:hover, .cal-cell.has-thumb:hover { filter: brightness(0.9); }
   .cal-cell .dot {
     position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 50%;
     background: var(--accent);
@@ -345,7 +350,11 @@
     width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
     background: var(--border);
   }
-  .entry-thumb.placeholder { visibility: hidden; }
+  .entry-thumb.placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .entry-thumb-dow { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .entry-thumb-day { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1.1; }
   .entry-row-text { min-width: 0; flex: 1; }
   .entry-row-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entry-row-meta { font-size: 10px; color: var(--muted); margin: 1px 0; }
@@ -365,6 +374,16 @@
   .trash-row-actions button { font-size: 11px; padding: 4px 8px; }
   .trash-delete-forever { color: #b04040; border-color: #b04040 !important; opacity: 0.7; }
   .trash-delete-forever:hover { opacity: 1; }
+  .trash-row-check { align-self: center; flex-shrink: 0; cursor: pointer; accent-color: var(--accent); }
+  #trash-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 11px;
+  }
+  #trash-select-all-label { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+  #trash-select-all-label input { cursor: pointer; accent-color: var(--accent); }
+  #trash-delete-selected { font-size: 11px; padding: 4px 8px; color: #b04040; border-color: #b04040; opacity: 0.7; }
+  #trash-delete-selected:hover:not(:disabled) { opacity: 1; }
+  #trash-delete-selected:disabled { opacity: 0.35; cursor: default; }
 
   #list-bottom-sentinel { height: 1px; }
 
@@ -533,6 +552,13 @@
           <div id="favorites-results"></div>
         </div>
         <div id="trash-view" style="display:none">
+          <div id="trash-toolbar" style="display:none">
+            <label id="trash-select-all-label">
+              <input type="checkbox" id="trash-select-all">
+              <span>select all</span>
+            </label>
+            <button id="trash-delete-selected" disabled>delete forever (<span id="trash-selected-count">0</span>)</button>
+          </div>
           <div id="trash-list"></div>
         </div>
       </div>
@@ -591,7 +617,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.2.1</div>
+    <div id="about-version">version 1.3</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <a id="about-coffee-link" href="https://buymeacoffee.com/dandanmian" target="_blank" rel="noopener noreferrer">buy me a coffee</a>
     <button id="btn-about-close">Close</button>
@@ -809,10 +835,16 @@ function applyTheme(settings) {
   if (metaTheme && p.bg) metaTheme.setAttribute('content', p.bg);
 }
 
+let calendarType = 'minimal';
+
 (function initialThemeSync() {
   try {
     const raw = localStorage.getItem('tree-editor-settings');
-    if (raw) applyTheme(JSON.parse(raw));
+    if (raw) {
+      const settings = JSON.parse(raw);
+      applyTheme(settings);
+      if (settings.calendarType) calendarType = settings.calendarType;
+    }
   } catch (e) {}
 })();
 
@@ -846,6 +878,11 @@ window.addEventListener('message', (e) => {
     saveCurrentEntry(msg.content);
   } else if (msg.type === 'THEME_CHANGED') {
     applyTheme(msg.settings);
+    const newCalendarType = (msg.settings && msg.settings.calendarType) || 'minimal';
+    if (newCalendarType !== calendarType) {
+      calendarType = newCalendarType;
+      renderCalendar();
+    }
   } else if (msg.type === 'FOCUS_MODE_CHANGED') {
     setGinkgoFocus(!!msg.active);
   } else if (msg.type === 'MODE_CHANGED') {
@@ -1328,9 +1365,13 @@ async function getMonthDots(year, month) {
   const nm = month === 11 ? { y: year + 1, m: 0 } : { y: year, m: month + 1 };
   const end = `${nm.y}-${pad2(nm.m + 1)}-01`;
   const range = IDBKeyRange.bound(start, end, false, true);
-  const dots = new Set();
+  const dots = new Map();
   await idbCursor('entries_meta', 'by_date', range, 'next', (cursor) => {
-    if (cursor.value.syncState !== 'tombstone') dots.add(cursor.value.date);
+    if (cursor.value.syncState !== 'tombstone') {
+      const d = cursor.value.date;
+      const thumb = cursor.value.thumbnail || null;
+      if (thumb || !dots.has(d)) dots.set(d, thumb);
+    }
     return true;
   });
   return dots;
@@ -1353,10 +1394,22 @@ async function renderCalendar() {
   const todayKey = dateKey(new Date());
   for (let day = 1; day <= daysInMonth; day++) {
     const key = `${calYear}-${pad2(calMonth + 1)}-${pad2(day)}`;
+    const hasEntry = dots.has(key);
+    const thumb = dots.get(key);
     const cell = document.createElement('div');
-    cell.className = 'cal-cell' + (key === todayKey ? ' today' : '');
-    cell.innerHTML = `<span>${day}</span>` + (dots.has(key) ? '<i class="dot"></i>' : '');
-    cell.addEventListener('click', () => onCalendarDayClick(key, dots.has(key)));
+    let cls = 'cal-cell' + (key === todayKey ? ' today' : '');
+    let dotHtml = '';
+    if (hasEntry) {
+      if (calendarType === 'dynamic') {
+        cls += thumb ? ' has-thumb' : ' has-entry';
+      } else {
+        dotHtml = '<i class="dot"></i>';
+      }
+    }
+    cell.className = cls;
+    if (calendarType === 'dynamic' && thumb) cell.style.backgroundImage = `url(${thumb})`;
+    cell.innerHTML = `<span>${day}</span>` + dotHtml;
+    cell.addEventListener('click', () => onCalendarDayClick(key, hasEntry));
     grid.appendChild(cell);
   }
 }
@@ -1412,9 +1465,14 @@ function renderEntryRow(meta) {
   row.className = 'entry-row' + (meta.conflictOf ? ' conflict' : '');
   row.dataset.id = meta.id;
   row.dataset.date = meta.date;
-  const thumbHtml = meta.thumbnail
-    ? `<img class="entry-thumb" src="${meta.thumbnail}" alt="">`
-    : '<div class="entry-thumb placeholder"></div>';
+  let thumbHtml;
+  if (meta.thumbnail) {
+    thumbHtml = `<img class="entry-thumb" src="${meta.thumbnail}" alt="">`;
+  } else {
+    const d = new Date(meta.createdAt);
+    const dow = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+    thumbHtml = `<div class="entry-thumb placeholder"><span class="entry-thumb-dow">${dow}</span><span class="entry-thumb-day">${d.getDate()}</span></div>`;
+  }
   row.innerHTML = `
     ${thumbHtml}
     <div class="entry-row-text">
@@ -1711,16 +1769,38 @@ async function purgeExpiredTombstones() {
   }
 }
 
+let trashSelection = new Set();
+
+function updateTrashToolbar() {
+  const checks = document.querySelectorAll('#trash-list .trash-row-check');
+  document.getElementById('trash-selected-count').textContent = trashSelection.size;
+  document.getElementById('trash-delete-selected').disabled = trashSelection.size === 0;
+  const selectAll = document.getElementById('trash-select-all');
+  selectAll.checked = checks.length > 0 && trashSelection.size === checks.length;
+  selectAll.indeterminate = trashSelection.size > 0 && trashSelection.size < checks.length;
+}
+
 function renderTrashRow(meta) {
   const row = document.createElement('div');
   row.className = 'entry-row';
   const daysLeft = Math.max(0, TRASH_GRACE_DAYS - Math.floor((Date.now() - new Date(meta.deletedAt).getTime()) / 86400000));
-  row.innerHTML = `
-    <div class="entry-row-text">
-      <div class="entry-row-title">${escapeHtml(meta.title || 'untitled')}</div>
-      <div class="entry-row-meta">deleted ${formatEntryTimestamp(meta.deletedAt)} · ${daysLeft}d left</div>
-      <div class="entry-row-preview">${escapeHtml(meta.preview || '')}</div>
-    </div>`;
+  const check = document.createElement('input');
+  check.type = 'checkbox';
+  check.className = 'trash-row-check';
+  check.dataset.id = meta.id;
+  check.checked = trashSelection.has(meta.id);
+  check.addEventListener('change', () => {
+    if (check.checked) trashSelection.add(meta.id); else trashSelection.delete(meta.id);
+    updateTrashToolbar();
+  });
+  row.appendChild(check);
+  const text = document.createElement('div');
+  text.className = 'entry-row-text';
+  text.innerHTML = `
+    <div class="entry-row-title">${escapeHtml(meta.title || 'untitled')}</div>
+    <div class="entry-row-meta">deleted ${formatEntryTimestamp(meta.deletedAt)} · ${daysLeft}d left</div>
+    <div class="entry-row-preview">${escapeHtml(meta.preview || '')}</div>`;
+  row.appendChild(text);
   const actions = document.createElement('div');
   actions.className = 'trash-row-actions';
   const restoreBtn = document.createElement('button');
@@ -1736,8 +1816,7 @@ function renderTrashRow(meta) {
   return row;
 }
 
-async function permanentlyDeleteEntry(id) {
-  if (!confirm('Permanently delete this entry? This cannot be undone — it will not wait out the 30-day grace period.')) return;
+async function purgeEntryRecords(id) {
   if (currentEntryId === id) {
     currentEntryId = null;
     currentEditorMode = null;
@@ -1746,9 +1825,37 @@ async function permanentlyDeleteEntry(id) {
   }
   await idbDelete('entries_meta', id);
   await idbDelete('entries_body', id);
+}
+
+async function permanentlyDeleteEntry(id) {
+  if (!confirm('Permanently delete this entry? This cannot be undone — it will not wait out the 30-day grace period.')) return;
+  await purgeEntryRecords(id);
+  trashSelection.delete(id);
   await renderTrash();
   showStatusMessage('deleted forever.');
 }
+
+async function permanentlyDeleteSelected() {
+  const ids = [...trashSelection];
+  if (!ids.length) return;
+  const n = ids.length;
+  if (!confirm(`Permanently delete ${n} ${n === 1 ? 'entry' : 'entries'}? This cannot be undone — it will not wait out the 30-day grace period.`)) return;
+  for (const id of ids) await purgeEntryRecords(id);
+  trashSelection.clear();
+  await renderTrash();
+  showStatusMessage(`${n} ${n === 1 ? 'entry' : 'entries'} deleted forever.`);
+}
+
+document.getElementById('trash-select-all').addEventListener('change', function() {
+  const checked = this.checked;
+  document.querySelectorAll('#trash-list .trash-row-check').forEach((c) => {
+    c.checked = checked;
+    if (checked) trashSelection.add(c.dataset.id); else trashSelection.delete(c.dataset.id);
+  });
+  updateTrashToolbar();
+});
+
+document.getElementById('trash-delete-selected').addEventListener('click', permanentlyDeleteSelected);
 
 async function renderTrash() {
   await purgeExpiredTombstones();
@@ -1758,13 +1865,19 @@ async function renderTrash() {
     return true;
   });
   rows.sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const validIds = new Set(rows.map((r) => r.id));
+  trashSelection.forEach((id) => { if (!validIds.has(id)) trashSelection.delete(id); });
   const trashList = document.getElementById('trash-list');
+  const toolbar = document.getElementById('trash-toolbar');
   trashList.innerHTML = '';
   if (!rows.length) {
     trashList.innerHTML = '<div id="empty-hint">Trash is empty.</div>';
+    toolbar.style.display = 'none';
     return;
   }
+  toolbar.style.display = 'flex';
   rows.forEach(meta => trashList.appendChild(renderTrashRow(meta)));
+  updateTrashToolbar();
 }
 
 /* ════════════════════════════════════════════════════════════════════
