@@ -617,7 +617,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.3</div>
+    <div id="about-version">version 1.3.1</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <a id="about-coffee-link" href="https://buymeacoffee.com/dandanmian" target="_blank" rel="noopener noreferrer">buy me a coffee</a>
     <button id="btn-about-close">Close</button>
@@ -2085,18 +2085,34 @@ function hideLockOverlay() {
   if (pendingSwReload) location.reload();
 }
 
-async function attemptPinUnlock() {
-  const pin = document.getElementById('lock-pin-input').value;
-  if (await verifyAppLockPin(pin)) {
+// showErrorOnFail is skipped for the auto-check fired on every keystroke
+// (PINs are 4-6 digits, so a 4-digit prefix of a 6-digit PIN is a normal
+// in-progress state, not a wrong guess) — only an explicit Enter/click/
+// max-length attempt should flash "Incorrect PIN."
+async function tryPinValue(pin, showErrorOnFail) {
+  const input = document.getElementById('lock-pin-input');
+  const ok = await verifyAppLockPin(pin);
+  if (input.value !== pin) return false; // stale: user kept typing while we hashed
+  if (ok) {
     hideLockOverlay();
     maybePromptForSyncPassphrase();
-  } else {
+    return true;
+  } else if (showErrorOnFail) {
     document.getElementById('lock-error').textContent = 'Incorrect PIN.';
-    document.getElementById('lock-pin-input').value = '';
+    input.value = '';
   }
+  return false;
+}
+async function attemptPinUnlock() {
+  await tryPinValue(document.getElementById('lock-pin-input').value, true);
 }
 document.getElementById('lock-unlock-btn').addEventListener('click', attemptPinUnlock);
 document.getElementById('lock-pin-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptPinUnlock(); });
+document.getElementById('lock-pin-input').addEventListener('input', (e) => {
+  const pin = e.target.value;
+  if (pin.length < 4) return; // shortest valid PIN — nothing to check yet
+  tryPinValue(pin, pin.length >= 6); // 6 is the longest valid PIN, so that's a definitive wrong guess
+});
 
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'hidden') {

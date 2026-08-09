@@ -1084,13 +1084,12 @@
 
   /* ── Print / PDF export ── */
   @media print {
-    #header, #statusbar, #sidebar, #split-divider, #word-menu, #annotation-popup, #image-hover-popup,
+    #header, #statusbar, #sidebar, #sidebar-toggle, #split-divider, #editor-scroll, #word-menu, #annotation-popup, #image-hover-popup,
     #settings-overlay, #about-overlay, #keys-overlay, #wp-confirm-overlay,
     #goal-prompt-overlay, .split-dropdown { display: none !important; }
-    body { background: #fff; }
-    #app { display: block; }
-    #editor-area { display: block; }
-    #preview { display: block !important; padding: 2cm; font-size: 12pt; color: #111; background: #fff; }
+    html, body { height: auto !important; overflow: visible !important; background: #fff; }
+    #main { display: block !important; height: auto !important; overflow: visible !important; }
+    #preview { display: block !important; height: auto !important; overflow: visible !important; padding: 2cm; font-size: 12pt; color: #111; background: #fff; }
     #preview a { color: #333; }
     .footnotes { border-top-color: #999; }
   }
@@ -4153,7 +4152,7 @@ ${bodyHtml}
 function exportPdf() {
   // Force preview mode so window.print() captures the rendered document
   const prevMode = currentMode;
-  if (currentMode !== 'preview' && currentMode !== 'split') setMode('split');
+  if (currentMode !== 'preview' && currentMode !== 'split') setMode('preview');
   setTimeout(() => {
     window.print();
     if (prevMode === 'write') setTimeout(() => setMode('write'), 500);
