@@ -584,6 +584,31 @@
   body[data-theme="paper"]    { --bg:#f5f7fa; --surface:#eceef2; --text:#1a1d23; --accent:#4a6080; --muted:#8a96a8; --border:#d4d8e0; }
   body[data-theme="sage"]     { --bg:#c4d9c4; --surface:#b8cfb8; --text:#162016; --accent:#3a6640; --muted:#4a6050; --border:#a0bfa0; }
   body[data-theme="ash"]      { --bg:#b0b0b0; --surface:#a4a4a4; --text:#0e0e0e; --accent:#3a3a3a; --muted:#555555; --border:#909090; }
+  body[data-theme="gameboy"]  { --bg:#b5bd8e; --surface:#a6ae80; --text:#33422a; --accent:#5f6f47; --muted:#7c8760; --border:#96a072; }
+  body[data-theme="gameboy"] #editor-scroll,
+  body[data-theme="gameboy"] #preview {
+    background-image: radial-gradient(circle at 1px 1px, rgba(51,66,42,0.14) 1px, transparent 0);
+    background-size: 3px 3px;
+  }
+  body[data-theme="gameboy"] .cm-content,
+  body[data-theme="gameboy"] #preview { font-weight: 700; }
+  body[data-theme="gameboy"] #statusbar { font-weight: 700; }
+  body[data-theme="moonwalker"]     { --bg:#050709; --surface:#0b0f14; --text:#00defb; --accent:#0127dd; --muted:#1a3fae; --border:#0d1a4a; }
+  body[data-theme="moonwalker"] .cm-content,
+  body[data-theme="moonwalker"] #preview { text-shadow: 0 0 1px rgba(220,250,255,1), 0 0 5px rgba(3,60,255,1), 0 0 14px rgba(3,60,255,1), 0 0 32px rgba(1,39,221,0.9); }
+  body[data-theme="moonwalker"] #statusbar { color: var(--text); text-shadow: 0 0 1px rgba(220,250,255,1), 0 0 3px rgba(3,60,255,1), 0 0 7px rgba(1,39,221,0.6); }
+  body[data-theme="moonwalker"] .cm-cursor {
+    border-left: none !important;
+    width: 2px !important;
+    background-color: #00defb;
+    box-shadow: 0 0 1px rgba(220,250,255,1), 0 0 5px rgba(3,60,255,1), 0 0 14px rgba(3,60,255,1), 0 0 26px rgba(1,39,221,0.85);
+  }
+  body[data-theme="moonwalker"] .cm-dropCursor {
+    border-left-color: #00defb !important;
+  }
+  body[data-theme="moonwalker"] .cm-selectionBackground,
+  body[data-theme="moonwalker"] .cm-focused .cm-selectionBackground { background: rgba(1,39,221,0.35) !important; opacity: 1; }
+  body[data-theme="moonwalker"] ::selection { background: rgba(1,39,221,0.35); }
   body[data-theme="terminal"] { --bg:#0a0a0a; --surface:#0f0f0f; --text:#22cc22; --accent:#0a5c0a; --muted:#1a7a1a; --border:#1a3a1a; }
   body[data-theme="terminal"] .cm-content,
   body[data-theme="terminal"] #preview { text-shadow: 0 0 8px rgba(51,255,51,0.35); }
@@ -1395,9 +1420,11 @@
       <option value="paper">paper</option>
       <option value="ash">ash</option>
       <option value="sage">sage</option>
+      <option value="gameboy">game boy</option>
       <option value="dark">dark</option>
       <option value="moss">moss</option>
       <option value="slate">slate</option>
+      <option value="moonwalker">moonwalker</option>
       <option value="terminal">terminal</option>
       <option value="custom">custom…</option>
       <option value="custom2">custom 2…</option>
@@ -1411,9 +1438,11 @@
         <div class="settings-theme-item" data-value="paper"><span class="theme-swatch" style="background:#f5f7fa"></span>paper</div>
         <div class="settings-theme-item" data-value="ash"><span class="theme-swatch" style="background:#b0b0b0"></span>ash</div>
         <div class="settings-theme-item" data-value="sage"><span class="theme-swatch" style="background:#c4d9c4"></span>sage</div>
+        <div class="settings-theme-item" data-value="gameboy"><span class="theme-swatch" style="background:#b5bd8e"></span>game boy</div>
         <div class="settings-theme-item" data-value="dark"><span class="theme-swatch" style="background:#1a1a1a"></span>dark</div>
         <div class="settings-theme-item" data-value="moss"><span class="theme-swatch" style="background:#1e2420"></span>moss</div>
         <div class="settings-theme-item" data-value="slate"><span class="theme-swatch" style="background:#1c2333"></span>slate</div>
+        <div class="settings-theme-item" data-value="moonwalker"><span class="theme-swatch" style="background:#050709;outline:1px solid #00defb"></span>moonwalker</div>
         <div class="settings-theme-item" data-value="terminal"><span class="theme-swatch" style="background:#0a0a0a;outline:1px solid #1a3a1a"></span>terminal</div>
         <div class="settings-theme-item" data-value="custom"><span class="theme-swatch theme-swatch-custom"></span>custom…</div>
         <div class="settings-theme-item" data-value="custom2"><span class="theme-swatch theme-swatch-custom"></span>custom 2…</div>
