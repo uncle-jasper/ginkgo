@@ -1,4 +1,4 @@
-const CACHE = 'ginkgo-v4';
+const CACHE = 'ginkgo-v5';
 const ASSETS = [
   '/ginkgo/',
   '/ginkgo/index.html',
