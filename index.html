@@ -977,22 +977,40 @@ document.addEventListener('click', (e) => {
    spacing polish. Kept in sync regardless of which side toggled it.
    ════════════════════════════════════════════════════════════════════ */
 let ginkgoFocusActive = false;
+// requestFullscreen()/exitFullscreen() are async and, in practice, can take
+// a while to actually settle (the OS/compositor animates the transition).
+// The topbar's own visibility (the ginkgo-focus class) is applied
+// synchronously below regardless, but toggling again before the previous
+// fullscreen call has settled — quickly entering then leaving, e.g. — could
+// leave a *stale* FOCUS_MODE_CHANGED echo from the iframe (see
+// emitFocusModeChanged in editor.html) landing after a newer local toggle
+// and re-flipping the class back to a state the user already left. Two
+// guards close that: an early-return once already in the requested state
+// (so a stale echo matching current state is a no-op instead of a
+// re-trigger), and toggleFocusMode awaiting any in-flight transition before
+// starting a new one, so overlapping requestFullscreen()/exitFullscreen()
+// calls can't pile up and finish out of order in the first place.
+let focusTransitionPromise = Promise.resolve();
 function setGinkgoFocus(active) {
+  if (active === ginkgoFocusActive) return;
   ginkgoFocusActive = active;
   document.body.classList.toggle('ginkgo-focus', active);
   if (active) {
     closeDrawer(); // nothing but the writing area — also avoids the exit control overlapping drawer tabs
-    if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+    if (document.documentElement.requestFullscreen) {
+      focusTransitionPromise = document.documentElement.requestFullscreen().catch(() => {});
+    }
   } else if (document.fullscreenElement) {
     // Not scoped to === document.documentElement: the fullscreen element can
     // legitimately end up being something else (e.g. the iframe, if it ever
     // grabs fullscreen on its own) and exitFullscreen() from the top-level
     // document still correctly unwinds the whole chain regardless of exactly
     // which element is currently holding it.
-    document.exitFullscreen().catch(() => {});
+    focusTransitionPromise = document.exitFullscreen().catch(() => {});
   }
 }
-function toggleFocusMode() {
+async function toggleFocusMode() {
+  await focusTransitionPromise;
   setGinkgoFocus(!ginkgoFocusActive);
   if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'TOGGLE_FOCUS' }, location.origin);
 }
