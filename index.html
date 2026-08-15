@@ -103,6 +103,28 @@
   }
   .tag-suggestion:hover { background: var(--border); color: var(--text); }
 
+  /* ── Mood popover ── */
+  #mood-popover-wrap { position: relative; }
+  #mood-popover {
+    position: absolute; top: calc(100% + 4px); right: 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px; z-index: 50; min-width: 200px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  #mood-emoji-row { display: flex; gap: 4px; }
+  .mood-emoji-btn {
+    all: unset; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 6px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .mood-emoji-btn:hover { background: var(--border); }
+  .mood-emoji-btn.selected { border-color: var(--muted); background: var(--border); }
+  #mood-note-input {
+    width: 100%; box-sizing: border-box; font-size: 12px; padding: 5px 7px; margin-top: 6px;
+    border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text);
+    display: none;
+  }
+  #mood-note-input.visible { display: block; }
+
   #sync-status {
     font-size: 11px; color: var(--muted); white-space: nowrap;
     padding: 4px 8px; cursor: default;
@@ -498,6 +520,13 @@
         <div id="tag-suggestions"></div>
       </div>
     </div>
+    <div id="mood-popover-wrap">
+      <button id="btn-mood-entry" title="Mood">😶</button>
+      <div id="mood-popover" style="display:none">
+        <div id="mood-emoji-row"></div>
+        <input type="text" id="mood-note-input" placeholder="why? (optional)" autocomplete="off">
+      </div>
+    </div>
     <button id="btn-new-entry" title="New entry">＋</button>
   </div>
   <div id="content-row">
@@ -617,7 +646,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.4</div>
+    <div id="about-version">version 1.4.1</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <a id="about-coffee-link" href="https://buymeacoffee.com/dandanmian" target="_blank" rel="noopener noreferrer">buy me a coffee</a>
     <button id="btn-about-close">Close</button>
@@ -976,6 +1005,8 @@ async function newEntryMeta(date) {
     thumbnail: null,
     tags: [],
     heroImagePosition: 'center',
+    mood: null,
+    moodNote: null,
     syncState: 'dirty',
     contentHash: null,
     remotePath: null,
@@ -1078,6 +1109,7 @@ async function openEntry(id, mode) {
   currentEntryId = id;
   openInEditor(body.content, mode || 'preview', meta.heroImagePosition);
   updateFavoriteButton(!!meta.favorite);
+  updateMoodButton(meta.mood || null);
   closeDrawerIfOverlay();
 }
 
@@ -1286,6 +1318,77 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#tag-popover-wrap')) document.getElementById('tag-popover').style.display = 'none';
 });
 
+function updateMoodButton(moodKey) {
+  document.getElementById('btn-mood-entry').textContent = moodKey ? moodEmoji(moodKey) : '😶';
+}
+
+function renderMoodEmojiRow(selectedKey) {
+  const row = document.getElementById('mood-emoji-row');
+  row.innerHTML = MOOD_OPTIONS.map(o =>
+    `<button class="mood-emoji-btn${o.key === selectedKey ? ' selected' : ''}" data-mood="${o.key}" title="${o.label}">${o.emoji}</button>`
+  ).join('');
+  row.querySelectorAll('.mood-emoji-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMoodForCurrentEntry(btn.dataset.mood));
+  });
+}
+
+async function openMoodPopover() {
+  const meta = await idbGet('entries_meta', currentEntryId);
+  if (!meta) return;
+  renderMoodEmojiRow(meta.mood || null);
+  const noteInput = document.getElementById('mood-note-input');
+  noteInput.value = meta.moodNote || '';
+  noteInput.classList.toggle('visible', !!meta.mood);
+  document.getElementById('mood-popover').style.display = 'block';
+}
+
+async function setMoodForCurrentEntry(key) {
+  if (!currentEntryId) return;
+  const meta = await idbGet('entries_meta', currentEntryId);
+  if (!meta) return;
+  const clearing = meta.mood === key;
+  meta.mood = clearing ? null : key;
+  meta.moodNote = clearing ? null : meta.moodNote;
+  meta.syncState = 'dirty';
+  meta.updatedAt = new Date().toISOString();
+  await idbPut('entries_meta', meta);
+  updateMoodButton(meta.mood);
+  renderMoodEmojiRow(meta.mood);
+  const noteInput = document.getElementById('mood-note-input');
+  noteInput.value = meta.moodNote || '';
+  noteInput.classList.toggle('visible', !!meta.mood);
+  patchListRowInPlace(meta);
+  if (typeof scheduleSync === 'function') scheduleSync();
+}
+
+async function setMoodNoteForCurrentEntry(text) {
+  if (!currentEntryId) return;
+  const meta = await idbGet('entries_meta', currentEntryId);
+  if (!meta || !meta.mood) return;
+  const note = text.replace(/[\r\n]+/g, ' ').trim() || null;
+  if (note === meta.moodNote) return;
+  meta.moodNote = note;
+  meta.syncState = 'dirty';
+  meta.updatedAt = new Date().toISOString();
+  await idbPut('entries_meta', meta);
+  patchListRowInPlace(meta);
+  if (typeof scheduleSync === 'function') scheduleSync();
+}
+
+document.getElementById('btn-mood-entry').addEventListener('click', () => {
+  if (!currentEntryId) { alert('Open an entry first.'); return; }
+  openMoodPopover();
+});
+document.getElementById('mood-note-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+});
+document.getElementById('mood-note-input').addEventListener('blur', (e) => {
+  setMoodNoteForCurrentEntry(e.target.value);
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#mood-popover-wrap')) document.getElementById('mood-popover').style.display = 'none';
+});
+
 /* ════════════════════════════════════════════════════════════════════
    Location + weather capture
    ════════════════════════════════════════════════════════════════════ */
@@ -1462,6 +1565,18 @@ async function getMonthEntries(year, month) {
   return rows;
 }
 
+const MOOD_OPTIONS = [
+  { key: 'great', emoji: '😄', label: 'Great' },
+  { key: 'good',  emoji: '🙂', label: 'Good' },
+  { key: 'okay',  emoji: '😐', label: 'Okay' },
+  { key: 'bad',   emoji: '🙁', label: 'Bad' },
+  { key: 'awful', emoji: '😢', label: 'Awful' },
+];
+function moodEmoji(key) {
+  const opt = MOOD_OPTIONS.find(o => o.key === key);
+  return opt ? opt.emoji : '';
+}
+
 function renderEntryRow(meta) {
   const row = document.createElement('div');
   row.className = 'entry-row' + (meta.conflictOf ? ' conflict' : '');
@@ -1478,7 +1593,7 @@ function renderEntryRow(meta) {
   row.innerHTML = `
     ${thumbHtml}
     <div class="entry-row-text">
-      <div class="entry-row-title">${meta.favorite ? '★ ' : ''}${escapeHtml(meta.title || 'untitled')}</div>
+      <div class="entry-row-title">${meta.favorite ? '★ ' : ''}${meta.mood ? `<span class="entry-row-mood"${meta.moodNote ? ` title="${escapeHtml(meta.moodNote)}"` : ''}>${moodEmoji(meta.mood)}</span> ` : ''}${escapeHtml(meta.title || 'untitled')}</div>
       <div class="entry-row-meta">${formatEntryTimestamp(meta.createdAt)}</div>
       <div class="entry-row-preview">${escapeHtml(meta.preview || '')}</div>
       ${(meta.tags && meta.tags.length) ? `<div class="entry-row-tags">${meta.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
@@ -1687,6 +1802,7 @@ async function deleteEntry(id) {
     currentEntryId = null;
     currentEditorMode = null;
     updateFavoriteButton(false);
+    updateMoodButton(null);
     if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'CLEAR_ENTRY' }, location.origin);
   }
   document.querySelectorAll(`.entry-row[data-id="${id}"]`).forEach(row => row.remove());
@@ -1823,6 +1939,7 @@ async function purgeEntryRecords(id) {
     currentEntryId = null;
     currentEditorMode = null;
     updateFavoriteButton(false);
+    updateMoodButton(null);
     if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({ type: 'CLEAR_ENTRY' }, location.origin);
   }
   await idbDelete('entries_meta', id);
@@ -2734,18 +2851,22 @@ function buildFileContent(meta, content) {
   const tagsLine = (meta.tags && meta.tags.length) ? `tags: ${meta.tags.join(',')}\n` : '';
   const heroLine = (meta.heroImagePosition && meta.heroImagePosition !== 'center') ? `heroImagePosition: ${meta.heroImagePosition}\n` : '';
   const favoriteLine = meta.favorite ? `favorite: true\n` : '';
-  return `---\nid: ${meta.id}\ncreatedAt: ${meta.createdAt}\nupdatedAt: ${meta.updatedAt}\n${tagsLine}${heroLine}${favoriteLine}---\n${content}`;
+  const moodLine = meta.mood ? `mood: ${meta.mood}\n` : '';
+  const moodNoteLine = meta.moodNote ? `moodNote: ${meta.moodNote}\n` : '';
+  return `---\nid: ${meta.id}\ncreatedAt: ${meta.createdAt}\nupdatedAt: ${meta.updatedAt}\n${tagsLine}${heroLine}${favoriteLine}${moodLine}${moodNoteLine}---\n${content}`;
 }
 function parseFileContent(raw) {
   const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!m) return { id: null, createdAt: null, updatedAt: null, tags: [], heroImagePosition: 'center', favorite: false, content: raw };
+  if (!m) return { id: null, createdAt: null, updatedAt: null, tags: [], heroImagePosition: 'center', favorite: false, mood: null, moodNote: null, content: raw };
   const fm = m[1];
   const get = (key) => { const mm = fm.match(new RegExp('^' + key + ':\\s*(.*)$', 'm')); return mm ? mm[1].trim() : null; };
   const tagsRaw = get('tags');
   const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
   const heroImagePosition = get('heroImagePosition') || 'center';
   const favorite = get('favorite') === 'true';
-  return { id: get('id'), createdAt: get('createdAt'), updatedAt: get('updatedAt'), tags, heroImagePosition, favorite, content: m[2] };
+  const mood = get('mood') || null;
+  const moodNote = get('moodNote') || null;
+  return { id: get('id'), createdAt: get('createdAt'), updatedAt: get('updatedAt'), tags, heroImagePosition, favorite, mood, moodNote, content: m[2] };
 }
 
 /* ── Push: local dirty/tombstoned rows → Dropbox ─────────────────── */
@@ -2848,7 +2969,7 @@ async function handleRemoteEntry(entry) {
     const meta = {
       id, createdAt, updatedAt: parsed.updatedAt || createdAt,
       date: dateKey(d), monthDay: monthDayKey(d),
-      title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', favorite: !!parsed.favorite,
+      title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', favorite: !!parsed.favorite, mood: parsed.mood || null, moodNote: parsed.moodNote || null,
       syncState: 'clean', contentHash,
       remotePath: path, remoteRev: entry.rev,
       lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash,
@@ -2861,7 +2982,7 @@ async function handleRemoteEntry(entry) {
 
   if (local.syncState === 'clean') {
     // simple remote-side update, no local edits to protect
-    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', favorite: !!parsed.favorite, contentHash,
+    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', favorite: !!parsed.favorite, mood: parsed.mood || null, moodNote: parsed.moodNote || null, contentHash,
       updatedAt: parsed.updatedAt || local.updatedAt, remoteRev: entry.rev,
       lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash });
     await idbPut('entries_meta', local);
@@ -2887,7 +3008,7 @@ async function handleRemoteEntry(entry) {
     await idbPut('entries_meta', conflictMeta);
     await idbPut('entries_body', { id: conflictId, content: localBody ? localBody.content : '' });
 
-    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', favorite: !!parsed.favorite, contentHash,
+    Object.assign(local, { title, preview, thumbnail: thumb, tags: parsed.tags || [], heroImagePosition: parsed.heroImagePosition || 'center', favorite: !!parsed.favorite, mood: parsed.mood || null, moodNote: parsed.moodNote || null, contentHash,
       updatedAt: parsed.updatedAt || local.updatedAt, remoteRev: entry.rev, syncState: 'clean',
       lastSyncedAt: new Date().toISOString(), lastSyncedHash: contentHash });
     await idbPut('entries_meta', local);
@@ -3253,6 +3374,8 @@ async function ingestParsedEntry(parsed, fallbackCreatedAt) {
     tags: parsed.tags || (existing ? existing.tags : []) || [],
     heroImagePosition: parsed.heroImagePosition || (existing ? existing.heroImagePosition : 'center') || 'center',
     favorite: !!(parsed.favorite || (existing && existing.favorite)),
+    mood: parsed.mood || (existing ? existing.mood : null) || null,
+    moodNote: parsed.moodNote || (existing ? existing.moodNote : null) || null,
     syncState: 'dirty', contentHash: await sha256Hex(content),
     remotePath: existing ? existing.remotePath : null,
     remoteRev: existing ? existing.remoteRev : null,
