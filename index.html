@@ -1379,6 +1379,11 @@ async function openMoodPopover() {
   noteInput.value = meta.moodNote || '';
   noteInput.classList.toggle('visible', !!meta.mood);
   document.getElementById('mood-popover').style.display = 'block';
+  // A mood is already picked, so the note field is the natural next thing
+  // to type into — without this, focus stays on the editor iframe (it was
+  // never moved), so typing a reason right away silently lands in the
+  // journal entry itself instead of the note field.
+  if (meta.mood) noteInput.focus();
 }
 
 // Mirrors location/weather's own dateline-enrichment approach (see
@@ -1476,6 +1481,11 @@ function setMoodForCurrentEntry(key) {
       const noteInput = document.getElementById('mood-note-input');
       noteInput.value = meta.moodNote || '';
       noteInput.classList.toggle('visible', !!meta.mood);
+      // Picking a mood makes the note field the natural next thing to type
+      // into — without this, focus is still on the editor iframe (it was
+      // never moved there), so typing a reason right away would silently
+      // land in the journal entry itself instead of the note field.
+      if (meta.mood) noteInput.focus();
     }
     patchListRowInPlace(meta);
   });
