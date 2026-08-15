@@ -368,6 +368,7 @@
     border-bottom: 1px solid var(--border);
   }
   .entry-row:hover { background: var(--bg); }
+  .entry-thumb-wrap { position: relative; flex-shrink: 0; }
   .entry-thumb {
     width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0;
     background: var(--border);
@@ -377,6 +378,14 @@
   }
   .entry-thumb-dow { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
   .entry-thumb-day { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1.1; }
+  .entry-row-mood-badge {
+    position: absolute; top: -5px; right: -5px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; line-height: 1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
   .entry-row-text { min-width: 0; flex: 1; }
   .entry-row-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entry-row-meta { font-size: 10px; color: var(--muted); margin: 1px 0; }
@@ -783,6 +792,13 @@ async function sha256Hex(str) {
 }
 
 const DATELINE_RE = /^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}\s+(AM|PM)/;
+// A mood + reason line (see moodLineText — one of MOOD_OPTIONS' labels,
+// lowercased) can immediately follow the dateline — skip it the same way,
+// so it's never mistaken for the title or bleeds into the preview snippet.
+// The trailing (?:\s.*)?$ requires the word to be the whole line (or start
+// a "word · reason" line), so it can't misfire mid-word on something like
+// "goodbye" or "badge".
+const MOOD_LINE_ONLY_RE = /^(?:great|good|okay|bad|awful)(?:\s.*)?$/;
 const IMAGE_ONLY_LINE_RE = /^(!\[[^\]]*\]\([^)]*\)\s*)+$/;
 
 function deriveTitleAndPreview(content) {
@@ -797,6 +813,7 @@ function deriveTitleAndPreview(content) {
   while (idx < lines.length && (lines[idx].trim() === '' || IMAGE_ONLY_LINE_RE.test(lines[idx].trim()))) idx++;
   if (DATELINE_RE.test((lines[idx] || '').trim())) {
     idx++;
+    if (MOOD_LINE_ONLY_RE.test((lines[idx] || '').trim())) idx++;
     while (idx < lines.length && lines[idx].trim() === '') idx++;
   }
   let title = 'untitled';
@@ -807,17 +824,20 @@ function deriveTitleAndPreview(content) {
   } else {
     const firstNonEmpty = lines.slice(idx).find(l => {
       const t = l.trim();
-      return t !== '' && !IMAGE_ONLY_LINE_RE.test(t) && !DATELINE_RE.test(t);
+      return t !== '' && !IMAGE_ONLY_LINE_RE.test(t) && !DATELINE_RE.test(t) && !MOOD_LINE_ONLY_RE.test(t);
     });
     if (firstNonEmpty) title = firstNonEmpty.trim();
   }
   while (idx < lines.length && lines[idx].trim() === '') idx++;
-  if (DATELINE_RE.test((lines[idx] || '').trim())) idx++;
+  if (DATELINE_RE.test((lines[idx] || '').trim())) {
+    idx++;
+    if (MOOD_LINE_ONLY_RE.test((lines[idx] || '').trim())) idx++;
+  }
   while (idx < lines.length && lines[idx].trim() === '') idx++;
   let preview = '';
   for (; idx < lines.length; idx++) {
     const t = lines[idx].trim();
-    if (t !== '' && !IMAGE_ONLY_LINE_RE.test(t)) { preview = t; break; }
+    if (t !== '' && !IMAGE_ONLY_LINE_RE.test(t) && !MOOD_LINE_ONLY_RE.test(t)) { preview = t; break; }
   }
   return { title, preview: preview.slice(0, 150) };
 }
@@ -1342,23 +1362,83 @@ async function openMoodPopover() {
   document.getElementById('mood-popover').style.display = 'block';
 }
 
+// Mirrors location/weather's own dateline-enrichment approach (see
+// enrichDatelineInBackground below): the mood, if set, is also spliced into
+// the entry's markdown as a literal line right after the dateline, so it
+// reads as a subtle line under the timestamp/location/weather in both the
+// editor's write mode (collapsed into the same dateline chip, see
+// DATELINE_RE in editor.html) and preview mode (a second muted byline
+// line). null means "no mood line".
+function moodLineText(mood, moodNote) {
+  if (!mood) return null;
+  return moodNote ? `${moodWord(mood)} · ${moodNote}` : moodWord(mood);
+}
+
+// Finds the dateline at the start of `content` and works out how to turn
+// `oldLine` (the mood line as it used to read, or null) into `newLine`
+// (as it should read now, or null) immediately beneath it. Returns null if
+// there's no recognizable dateline, or if the expected old mood line isn't
+// there anymore (the user already edited or deleted it) — in either case
+// the entry text is left alone, same caution enrichDatelineInBackground
+// uses for its own dateline edits, and the mood stays metadata-only.
+function computeMoodLinePatch(content, oldLine, newLine) {
+  const dm = content.match(/^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?/);
+  if (!dm) return null;
+  const afterDateline = content.slice(dm[0].length);
+  const oldPrefix = oldLine ? '\n' + oldLine : '';
+  if (oldLine && !afterDateline.startsWith(oldPrefix)) return null;
+  const from = dm[0] + oldPrefix;
+  const to = dm[0] + (newLine ? '\n' + newLine : '');
+  return { from, to, content: to + afterDateline.slice(oldPrefix.length) };
+}
+
+// Applies a mood-line text change (from setMoodForCurrentEntry or
+// setMoodNoteForCurrentEntry) to both entries_meta and, best-effort, the
+// entry's own markdown body — live-patching the open editor document the
+// same way UPDATE_DATELINE does if this entry is currently open, so an
+// in-flight edit is never clobbered, otherwise patching entries_body
+// directly.
+async function applyMoodLineChange(entryId, meta, oldLine, newLine) {
+  meta.syncState = 'dirty';
+  if (oldLine !== newLine) {
+    // If this entry is the one currently open, entries_body can be stale —
+    // a prior live-patch (e.g. setting the mood) may not have round-tripped
+    // through the editor's own autosave into storage yet. Read the live
+    // document instead so back-to-back edits (mood, then its note) each see
+    // what the previous one actually wrote, not a stale copy.
+    const isLive = currentEntryId === entryId && editorFrame.contentWindow && typeof editorFrame.contentWindow.getContent === 'function';
+    const currentContent = isLive ? editorFrame.contentWindow.getContent() : (await idbGet('entries_body', entryId) || {}).content;
+    const patch = currentContent != null ? computeMoodLinePatch(currentContent, oldLine, newLine) : null;
+    if (patch) {
+      if (isLive) {
+        editorFrame.contentWindow.postMessage({ type: 'UPDATE_DATELINE', from: patch.from, to: patch.to }, location.origin);
+      } else {
+        await idbPut('entries_body', { id: entryId, content: patch.content });
+        meta.contentHash = await sha256Hex(patch.content);
+      }
+    }
+  }
+  await idbPut('entries_meta', meta);
+  if (typeof scheduleSync === 'function') scheduleSync();
+}
+
 async function setMoodForCurrentEntry(key) {
   if (!currentEntryId) return;
   const meta = await idbGet('entries_meta', currentEntryId);
   if (!meta) return;
+  const oldLine = moodLineText(meta.mood, meta.moodNote);
   const clearing = meta.mood === key;
   meta.mood = clearing ? null : key;
   meta.moodNote = clearing ? null : meta.moodNote;
-  meta.syncState = 'dirty';
   meta.updatedAt = new Date().toISOString();
-  await idbPut('entries_meta', meta);
+  const newLine = moodLineText(meta.mood, meta.moodNote);
+  await applyMoodLineChange(currentEntryId, meta, oldLine, newLine);
   updateMoodButton(meta.mood);
   renderMoodEmojiRow(meta.mood);
   const noteInput = document.getElementById('mood-note-input');
   noteInput.value = meta.moodNote || '';
   noteInput.classList.toggle('visible', !!meta.mood);
   patchListRowInPlace(meta);
-  if (typeof scheduleSync === 'function') scheduleSync();
 }
 
 async function setMoodNoteForCurrentEntry(text) {
@@ -1367,12 +1447,12 @@ async function setMoodNoteForCurrentEntry(text) {
   if (!meta || !meta.mood) return;
   const note = text.replace(/[\r\n]+/g, ' ').trim() || null;
   if (note === meta.moodNote) return;
+  const oldLine = moodLineText(meta.mood, meta.moodNote);
   meta.moodNote = note;
-  meta.syncState = 'dirty';
   meta.updatedAt = new Date().toISOString();
-  await idbPut('entries_meta', meta);
+  const newLine = moodLineText(meta.mood, meta.moodNote);
+  await applyMoodLineChange(currentEntryId, meta, oldLine, newLine);
   patchListRowInPlace(meta);
-  if (typeof scheduleSync === 'function') scheduleSync();
 }
 
 document.getElementById('btn-mood-entry').addEventListener('click', () => {
@@ -1576,6 +1656,13 @@ function moodEmoji(key) {
   const opt = MOOD_OPTIONS.find(o => o.key === key);
   return opt ? opt.emoji : '';
 }
+// Lowercase word form of a mood, used only for the line spliced into the
+// entry's own text (moodLineText) — the emoji stays emoji everywhere else
+// (badges, popover, topbar button) via moodEmoji above.
+function moodWord(key) {
+  const opt = MOOD_OPTIONS.find(o => o.key === key);
+  return opt ? opt.label.toLowerCase() : '';
+}
 
 function renderEntryRow(meta) {
   const row = document.createElement('div');
@@ -1590,10 +1677,11 @@ function renderEntryRow(meta) {
     const dow = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
     thumbHtml = `<div class="entry-thumb placeholder"><span class="entry-thumb-dow">${dow}</span><span class="entry-thumb-day">${d.getDate()}</span></div>`;
   }
+  const moodBadgeHtml = meta.mood ? `<span class="entry-row-mood-badge"${meta.moodNote ? ` title="${escapeHtml(meta.moodNote)}"` : ''}>${moodEmoji(meta.mood)}</span>` : '';
   row.innerHTML = `
-    ${thumbHtml}
+    <div class="entry-thumb-wrap">${thumbHtml}${moodBadgeHtml}</div>
     <div class="entry-row-text">
-      <div class="entry-row-title">${meta.favorite ? '★ ' : ''}${meta.mood ? `<span class="entry-row-mood"${meta.moodNote ? ` title="${escapeHtml(meta.moodNote)}"` : ''}>${moodEmoji(meta.mood)}</span> ` : ''}${escapeHtml(meta.title || 'untitled')}</div>
+      <div class="entry-row-title">${meta.favorite ? '★ ' : ''}${escapeHtml(meta.title || 'untitled')}</div>
       <div class="entry-row-meta">${formatEntryTimestamp(meta.createdAt)}</div>
       <div class="entry-row-preview">${escapeHtml(meta.preview || '')}</div>
       ${(meta.tags && meta.tags.length) ? `<div class="entry-row-tags">${meta.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('')}</div>` : ''}

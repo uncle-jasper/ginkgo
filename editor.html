@@ -1004,6 +1004,10 @@
   }
   .dateline-chip:hover { background: var(--border); opacity: 1; }
   .cm-dateline-expanded { background: rgba(200,160,0,0.12); border-radius: 3px; outline: 1px dashed var(--border); }
+  /* Mood + reason line beneath the dateline — same muted look as the chip,
+     but left as plain editable text (see MOOD_LINE_RE) rather than a
+     collapsible widget. */
+  .cm-mood-line { font-size: 0.82em; color: var(--muted); opacity: 0.8; }
   #image-hover-popup {
     position: fixed;
     z-index: 4000;
@@ -2169,6 +2173,22 @@ const imagePlugin = ViewPlugin.fromClass(class {
 // keeps working exactly as before regardless of collapsed/expanded state.
 const DATELINE_RE = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?$/m;
 
+// A second auto-inserted line for mood + reason can follow directly beneath
+// the dateline (see moodLineText in ginkgo/index.html — one of MOOD_OPTIONS'
+// labels, lowercased, e.g. "bad", optionally followed by " · " + a reason;
+// the emoji stays UI-only over there, never written into the text). This is
+// matched and styled separately from the dateline chip above, rather than
+// folded into one combined match: CodeMirror replace decorations (the
+// chip/widget mechanism) can't span a line break, so a single decoration
+// covering both lines silently drops the second one. The mood line instead
+// gets a plain mark decoration — same muted styling, but left as ordinary
+// editable text (no collapse/expand, no atomic range) since there's no long
+// value to hide.
+const MOOD_LINE_RE = /^\n(?:great|good|okay|bad|awful)(?: .+)?/;
+// Preview mode has no such constraint (it's just HTML string building, see
+// extractByline below) so there both lines are matched together as one unit.
+const DATELINE_WITH_MOOD_RE = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?(?:\n(?:great|good|okay|bad|awful)(?: .+)?)?$/m;
+
 const toggleDatelineExpanded = StateEffect.define();
 
 const datelineExpandedField = StateField.define({
@@ -2223,6 +2243,13 @@ const datelinePlugin = ViewPlugin.fromClass(class {
       } else {
         decoBuilder.add(from, to, Decoration.replace({ widget: new DatelineWidget(m[0]) }));
         atomicBuilder.add(from, to, Decoration.replace({}));
+      }
+      // Mood + reason line directly beneath the dateline, if present — kept
+      // as plain editable text (unlike the dateline itself) since it's just
+      // muted-styled, not collapsed into a chip.
+      const mm = text.slice(to).match(MOOD_LINE_RE);
+      if (mm) {
+        decoBuilder.add(to + 1, to + mm[0].length, Decoration.mark({ class: 'cm-mood-line' }));
       }
     }
     this.decorations = decoBuilder.finish();
@@ -3322,12 +3349,13 @@ function extractHeroImage(md) {
 }
 
 // Pulls Ginkgo's auto-inserted dateline (timestamp, optionally followed by
-// · location · weather — see formatEntryTimestamp in ginkgo/index.html) out
-// of the document so it can be rendered smaller/subdued instead of as an
-// ordinary paragraph. Only matches that exact shape, so it can't misfire on
-// a line the user happened to write that merely starts with a date.
+// · location · weather, optionally followed by a mood + reason line — see
+// DATELINE_WITH_MOOD_RE above) out of the document so it can be rendered
+// smaller/subdued instead of as an ordinary paragraph. Only matches that
+// exact shape, so it can't misfire on a line the user happened to write
+// that merely starts with a date.
 function extractByline(md) {
-  const m = md.match(/^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?$/m);
+  const m = md.match(DATELINE_WITH_MOOD_RE);
   if (!m) return { content: md, bylineText: null };
   const content = (md.slice(0, m.index) + md.slice(m.index + m[0].length)).replace(/\n{3,}/g, '\n\n');
   return { content, bylineText: m[0] };
@@ -3358,7 +3386,10 @@ function renderPreview() {
         </div>
       </div>`
     : '';
-  const bylineHtml = bylineText ? `<p class="preview-byline">${escapeHtml(bylineText)}</p>` : '';
+  // bylineText may be two lines (dateline, then mood + reason) — render each
+  // as its own muted paragraph so the mood line reads as a line underneath,
+  // not run together with the timestamp/location/weather.
+  const bylineHtml = bylineText ? bylineText.split('\n').map(l => `<p class="preview-byline">${escapeHtml(l)}</p>`).join('') : '';
   // parseMarkdown now handles annotation stripping internally
   prev.innerHTML = '<div class="preview-inner">' + heroHtml + bylineHtml + parseMarkdown(content) + '</div>';
 }
