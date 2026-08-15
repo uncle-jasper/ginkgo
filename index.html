@@ -1688,6 +1688,20 @@ const sentinelEl = document.getElementById('list-bottom-sentinel');
 let loadedMonths = new Set();
 let oldestLoaded = null;
 let programmaticScroll = false;
+// Set for the duration of any full list rebuild (renderInitialList,
+// refreshLoadedMonths, jumpListToMonth — all clear the list, then await
+// appendMonth() one month at a time). appendMonth() marks oldestLoaded
+// *before* it awaits fetching that month's entries, so there's a window,
+// right after a rebuild's wipe (which exposes the bottom sentinel, since
+// the list is briefly empty), where oldestLoaded already points at the
+// rebuild's first month but nothing has actually been inserted yet. If
+// bottomSentinelObserver's callback fires in that window, it appends the
+// *previous* month out of turn, landing it ahead of the rebuild's own
+// first month once that finally lands — this is what caused July to
+// briefly jump above August while a background sync's refreshLoadedMonths()
+// rebuild was in flight. Guarding the observer callback with this flag
+// closes that window.
+let listRebuildInProgress = false;
 
 async function getMonthEntries(year, month) {
   const start = new Date(year, month, 1).toISOString();
@@ -1837,7 +1851,7 @@ listEl.addEventListener('scroll', () => {
 
 const bottomSentinelObserver = new IntersectionObserver(async (entries) => {
   for (const e of entries) {
-    if (e.isIntersecting && oldestLoaded) {
+    if (e.isIntersecting && oldestLoaded && !listRebuildInProgress) {
       const prev = prevMonth(oldestLoaded.year, oldestLoaded.month);
       await appendMonth(prev.year, prev.month);
       evictOldMonthsIfNeeded();
@@ -1847,12 +1861,17 @@ const bottomSentinelObserver = new IntersectionObserver(async (entries) => {
 bottomSentinelObserver.observe(sentinelEl);
 
 async function renderInitialList() {
-  listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
-  loadedMonths.clear();
-  oldestLoaded = null;
-  await appendMonth(calYear, calMonth);
-  const prev = prevMonth(calYear, calMonth);
-  await appendMonth(prev.year, prev.month);
+  listRebuildInProgress = true;
+  try {
+    listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
+    loadedMonths.clear();
+    oldestLoaded = null;
+    await appendMonth(calYear, calMonth);
+    const prev = prevMonth(calYear, calMonth);
+    await appendMonth(prev.year, prev.month);
+  } finally {
+    listRebuildInProgress = false;
+  }
 }
 
 // Re-fetches and re-renders whatever months are already loaded, for callers
@@ -1871,22 +1890,32 @@ async function refreshLoadedMonths() {
     .map(k => { const [y, m] = k.split('-').map(Number); return { year: y, month: m - 1 }; })
     .sort((a, b) => (b.year - a.year) || (b.month - a.month));
   const savedScroll = listEl.scrollTop;
-  listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
-  loadedMonths.clear();
-  oldestLoaded = null;
-  for (const { year, month } of months) await appendMonth(year, month);
-  listEl.scrollTop = savedScroll;
+  listRebuildInProgress = true;
+  try {
+    listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
+    loadedMonths.clear();
+    oldestLoaded = null;
+    for (const { year, month } of months) await appendMonth(year, month);
+    listEl.scrollTop = savedScroll;
+  } finally {
+    listRebuildInProgress = false;
+  }
 }
 
 async function jumpListToMonth(year, month) {
   const key = monthKeyOf(year, month);
   if (!loadedMonths.has(key)) {
-    listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
-    loadedMonths.clear();
-    oldestLoaded = null;
-    await appendMonth(year, month);
-    const prev = prevMonth(year, month);
-    await appendMonth(prev.year, prev.month);
+    listRebuildInProgress = true;
+    try {
+      listEl.querySelectorAll('.month-marker, .entry-row, #empty-hint').forEach(el => el.remove());
+      loadedMonths.clear();
+      oldestLoaded = null;
+      await appendMonth(year, month);
+      const prev = prevMonth(year, month);
+      await appendMonth(prev.year, prev.month);
+    } finally {
+      listRebuildInProgress = false;
+    }
   }
 }
 
@@ -3195,14 +3224,19 @@ async function pullFromDropbox() {
 let syncInFlight = null;
 let syncQueued = false;
 
+// The syncInFlight guard is set synchronously here, before the
+// isDropboxConnected() await, rather than inside its .then() as before —
+// scheduleSync() runs on every autosave, so a burst of calls in quick
+// succession (routine while typing) no longer each redundantly re-check
+// connectivity before finding out a sync is already in flight.
 function scheduleSync() {
-  isDropboxConnected().then(connected => {
-    if (!connected) return;
-    if (syncInFlight) { syncQueued = true; return; }
-    syncInFlight = runSync().finally(() => {
-      syncInFlight = null;
-      if (syncQueued) { syncQueued = false; scheduleSync(); }
-    });
+  if (syncInFlight) { syncQueued = true; return; }
+  syncInFlight = (async () => {
+    if (!(await isDropboxConnected())) return;
+    await runSync();
+  })().finally(() => {
+    syncInFlight = null;
+    if (syncQueued) { syncQueued = false; scheduleSync(); }
   });
 }
 
