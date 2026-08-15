@@ -518,8 +518,14 @@
     <div id="topbar-title">Ginkgo</div>
     <span id="sync-status"></span>
     <button id="btn-focus" title="Focus mode">⛶</button>
-    <button id="btn-lock-now" title="Lock now" style="display:none">🔒</button>
     <button id="btn-attach-photo" title="Attach photo">📷</button>
+    <div id="mood-popover-wrap">
+      <button id="btn-mood-entry" title="Mood">😶</button>
+      <div id="mood-popover" style="display:none">
+        <div id="mood-emoji-row"></div>
+        <input type="text" id="mood-note-input" placeholder="why? (optional)" autocomplete="off">
+      </div>
+    </div>
     <button id="btn-favorite-entry" title="Favorite">☆</button>
     <div id="tag-popover-wrap">
       <button id="btn-tag-entry" title="Tags">🏷</button>
@@ -529,13 +535,7 @@
         <div id="tag-suggestions"></div>
       </div>
     </div>
-    <div id="mood-popover-wrap">
-      <button id="btn-mood-entry" title="Mood">😶</button>
-      <div id="mood-popover" style="display:none">
-        <div id="mood-emoji-row"></div>
-        <input type="text" id="mood-note-input" placeholder="why? (optional)" autocomplete="off">
-      </div>
-    </div>
+    <button id="btn-lock-now" title="Lock now" style="display:none">🔒</button>
     <button id="btn-new-entry" title="New entry">＋</button>
   </div>
   <div id="content-row">
@@ -792,13 +792,12 @@ async function sha256Hex(str) {
 }
 
 const DATELINE_RE = /^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}\s+(AM|PM)/;
-// A mood + reason line (see moodLineText — one of MOOD_OPTIONS' labels,
-// lowercased) can immediately follow the dateline — skip it the same way,
-// so it's never mistaken for the title or bleeds into the preview snippet.
-// The trailing (?:\s.*)?$ requires the word to be the whole line (or start
-// a "word · reason" line), so it can't misfire mid-word on something like
-// "goodbye" or "badge".
-const MOOD_LINE_ONLY_RE = /^(?:great|good|okay|bad|awful)(?:\s.*)?$/;
+// A mood + reason line (see moodLineText — "mood: " + one of MOOD_OPTIONS'
+// labels, lowercased) can immediately follow the dateline — skip it the
+// same way, so it's never mistaken for the title or bleeds into the
+// preview snippet. The "mood: " prefix is what keeps this from ever
+// misfiring on a line the user actually wrote.
+const MOOD_LINE_ONLY_RE = /^mood: (?:great|good|okay|bad|awful)(?:\s.*)?$/;
 const IMAGE_ONLY_LINE_RE = /^(!\[[^\]]*\]\([^)]*\)\s*)+$/;
 
 function deriveTitleAndPreview(content) {
@@ -940,6 +939,8 @@ window.addEventListener('message', (e) => {
     currentEditorMode = msg.mode;
   } else if (msg.type === 'SET_HERO_POSITION') {
     setHeroImagePosition(msg.position);
+  } else if (msg.type === 'EDITOR_CLICKED') {
+    document.getElementById('mood-popover').style.display = 'none';
   }
 });
 
@@ -1371,7 +1372,7 @@ async function openMoodPopover() {
 // line). null means "no mood line".
 function moodLineText(mood, moodNote) {
   if (!mood) return null;
-  return moodNote ? `${moodWord(mood)} · ${moodNote}` : moodWord(mood);
+  return moodNote ? `mood: ${moodWord(mood)} · ${moodNote}` : `mood: ${moodWord(mood)}`;
 }
 
 // Finds the dateline at the start of `content` and works out how to turn
@@ -1422,37 +1423,61 @@ async function applyMoodLineChange(entryId, meta, oldLine, newLine) {
   if (typeof scheduleSync === 'function') scheduleSync();
 }
 
-async function setMoodForCurrentEntry(key) {
-  if (!currentEntryId) return;
-  const meta = await idbGet('entries_meta', currentEntryId);
-  if (!meta) return;
-  const oldLine = moodLineText(meta.mood, meta.moodNote);
-  const clearing = meta.mood === key;
-  meta.mood = clearing ? null : key;
-  meta.moodNote = clearing ? null : meta.moodNote;
-  meta.updatedAt = new Date().toISOString();
-  const newLine = moodLineText(meta.mood, meta.moodNote);
-  await applyMoodLineChange(currentEntryId, meta, oldLine, newLine);
-  updateMoodButton(meta.mood);
-  renderMoodEmojiRow(meta.mood);
-  const noteInput = document.getElementById('mood-note-input');
-  noteInput.value = meta.moodNote || '';
-  noteInput.classList.toggle('visible', !!meta.mood);
-  patchListRowInPlace(meta);
+// Two mood edits on the same entry in quick succession (e.g. clicking
+// through several mood emoji, or a click immediately followed by the note
+// field's blur) are each async and touch the same meta/body records. Left
+// unserialized, the second edit's idbGet can land before the first edit's
+// idbPut finishes, so it computes its patch from stale mood/text state —
+// silently producing a malformed or duplicated mood line. Routing every
+// mood edit through this single queue makes each one fully complete (read,
+// mutate, write, patch body) before the next one starts reading, so they
+// can never interleave regardless of click speed.
+let moodOpQueue = Promise.resolve();
+function serializeMoodOp(fn) {
+  const result = moodOpQueue.then(fn, fn);
+  moodOpQueue = result.catch(() => {}); // one failed op must not wedge the queue for later ones
+  return result;
 }
 
-async function setMoodNoteForCurrentEntry(text) {
-  if (!currentEntryId) return;
-  const meta = await idbGet('entries_meta', currentEntryId);
-  if (!meta || !meta.mood) return;
-  const note = text.replace(/[\r\n]+/g, ' ').trim() || null;
-  if (note === meta.moodNote) return;
-  const oldLine = moodLineText(meta.mood, meta.moodNote);
-  meta.moodNote = note;
-  meta.updatedAt = new Date().toISOString();
-  const newLine = moodLineText(meta.mood, meta.moodNote);
-  await applyMoodLineChange(currentEntryId, meta, oldLine, newLine);
-  patchListRowInPlace(meta);
+function setMoodForCurrentEntry(key) {
+  const entryId = currentEntryId;
+  if (!entryId) return;
+  return serializeMoodOp(async () => {
+    const meta = await idbGet('entries_meta', entryId);
+    if (!meta) return;
+    const oldLine = moodLineText(meta.mood, meta.moodNote);
+    const clearing = meta.mood === key;
+    meta.mood = clearing ? null : key;
+    meta.moodNote = clearing ? null : meta.moodNote;
+    meta.updatedAt = new Date().toISOString();
+    const newLine = moodLineText(meta.mood, meta.moodNote);
+    await applyMoodLineChange(entryId, meta, oldLine, newLine);
+    if (currentEntryId === entryId) {
+      updateMoodButton(meta.mood);
+      renderMoodEmojiRow(meta.mood);
+      const noteInput = document.getElementById('mood-note-input');
+      noteInput.value = meta.moodNote || '';
+      noteInput.classList.toggle('visible', !!meta.mood);
+    }
+    patchListRowInPlace(meta);
+  });
+}
+
+function setMoodNoteForCurrentEntry(text) {
+  const entryId = currentEntryId;
+  if (!entryId) return;
+  return serializeMoodOp(async () => {
+    const meta = await idbGet('entries_meta', entryId);
+    if (!meta || !meta.mood) return;
+    const note = text.replace(/[\r\n]+/g, ' ').trim() || null;
+    if (note === meta.moodNote) return;
+    const oldLine = moodLineText(meta.mood, meta.moodNote);
+    meta.moodNote = note;
+    meta.updatedAt = new Date().toISOString();
+    const newLine = moodLineText(meta.mood, meta.moodNote);
+    await applyMoodLineChange(entryId, meta, oldLine, newLine);
+    patchListRowInPlace(meta);
+  });
 }
 
 document.getElementById('btn-mood-entry').addEventListener('click', () => {
@@ -1468,6 +1493,10 @@ document.getElementById('mood-note-input').addEventListener('blur', (e) => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#mood-popover-wrap')) document.getElementById('mood-popover').style.display = 'none';
 });
+// A click inside the editor iframe never reaches the listener above — it's
+// a click in a different document, so it doesn't bubble up to this one.
+// The editor notifies us of its own clicks instead (see EDITOR_CLICKED in
+// the message listener below) so this still counts as "clicked outside."
 
 /* ════════════════════════════════════════════════════════════════════
    Location + weather capture

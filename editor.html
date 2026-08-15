@@ -1008,6 +1008,7 @@
      but left as plain editable text (see MOOD_LINE_RE) rather than a
      collapsible widget. */
   .cm-mood-line { font-size: 0.82em; color: var(--muted); opacity: 0.8; }
+  .cm-mood-line-value { font-style: italic; }
   #image-hover-popup {
     position: fixed;
     z-index: 4000;
@@ -2174,20 +2175,23 @@ const imagePlugin = ViewPlugin.fromClass(class {
 const DATELINE_RE = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?$/m;
 
 // A second auto-inserted line for mood + reason can follow directly beneath
-// the dateline (see moodLineText in ginkgo/index.html — one of MOOD_OPTIONS'
-// labels, lowercased, e.g. "bad", optionally followed by " · " + a reason;
-// the emoji stays UI-only over there, never written into the text). This is
-// matched and styled separately from the dateline chip above, rather than
-// folded into one combined match: CodeMirror replace decorations (the
-// chip/widget mechanism) can't span a line break, so a single decoration
-// covering both lines silently drops the second one. The mood line instead
-// gets a plain mark decoration — same muted styling, but left as ordinary
-// editable text (no collapse/expand, no atomic range) since there's no long
-// value to hide.
-const MOOD_LINE_RE = /^\n(?:great|good|okay|bad|awful)(?: .+)?/;
+// the dateline (see moodLineText in ginkgo/index.html — "mood: " + one of
+// MOOD_OPTIONS' labels, lowercased, e.g. "mood: bad", optionally followed
+// by " · " + a reason; the emoji stays UI-only over there, never written
+// into the text). This is matched and styled separately from the dateline
+// chip above, rather than folded into one combined match: CodeMirror
+// replace decorations (the chip/widget mechanism) can't span a line break,
+// so a single decoration covering both lines silently drops the second
+// one. The mood line instead gets a plain mark decoration — same muted
+// styling, but left as ordinary editable text (no collapse/expand, no
+// atomic range) since there's no long value to hide. The "mood: " prefix
+// (not just the bare word) is what keeps this from ever misfiring on a
+// line the user actually wrote.
+const MOOD_LINE_RE = /^\nmood: (?:great|good|okay|bad|awful)(?: .+)?/;
+const MOOD_LINE_LABEL_LEN = 'mood: '.length;
 // Preview mode has no such constraint (it's just HTML string building, see
 // extractByline below) so there both lines are matched together as one unit.
-const DATELINE_WITH_MOOD_RE = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?(?:\n(?:great|good|okay|bad|awful)(?: .+)?)?$/m;
+const DATELINE_WITH_MOOD_RE = /^\d{2}-\d{2}-\d{4} \d{2}:\d{2} (?:AM|PM)(?: · .+)?(?:\nmood: (?:great|good|okay|bad|awful)(?: .+)?)?$/m;
 
 const toggleDatelineExpanded = StateEffect.define();
 
@@ -2246,10 +2250,15 @@ const datelinePlugin = ViewPlugin.fromClass(class {
       }
       // Mood + reason line directly beneath the dateline, if present — kept
       // as plain editable text (unlike the dateline itself) since it's just
-      // muted-styled, not collapsed into a chip.
+      // muted-styled, not collapsed into a chip. The "mood: " label and the
+      // mood/reason value are two adjacent decorations rather than one, so
+      // the value alone can be italicized (MOOD_LINE_LABEL_LEN below is the
+      // fixed "mood: " prefix's length, guaranteed by MOOD_LINE_RE).
       const mm = text.slice(to).match(MOOD_LINE_RE);
       if (mm) {
-        decoBuilder.add(to + 1, to + mm[0].length, Decoration.mark({ class: 'cm-mood-line' }));
+        const mFrom = to + 1, mTo = to + mm[0].length, labelEnd = mFrom + MOOD_LINE_LABEL_LEN;
+        decoBuilder.add(mFrom, labelEnd, Decoration.mark({ class: 'cm-mood-line' }));
+        if (labelEnd < mTo) decoBuilder.add(labelEnd, mTo, Decoration.mark({ class: 'cm-mood-line cm-mood-line-value' }));
       }
     }
     this.decorations = decoBuilder.finish();
@@ -3388,8 +3397,13 @@ function renderPreview() {
     : '';
   // bylineText may be two lines (dateline, then mood + reason) — render each
   // as its own muted paragraph so the mood line reads as a line underneath,
-  // not run together with the timestamp/location/weather.
-  const bylineHtml = bylineText ? bylineText.split('\n').map(l => `<p class="preview-byline">${escapeHtml(l)}</p>`).join('') : '';
+  // not run together with the timestamp/location/weather. The mood line's
+  // value (everything after the "mood: " label) is italicized as a plain
+  // <em> — a display-only touch, never written into the actual markdown.
+  const bylineHtml = bylineText ? bylineText.split('\n').map(l => {
+    const mm = l.match(/^mood: (.+)$/);
+    return mm ? `<p class="preview-byline">mood: <em>${escapeHtml(mm[1])}</em></p>` : `<p class="preview-byline">${escapeHtml(l)}</p>`;
+  }).join('') : '';
   // parseMarkdown now handles annotation stripping internally
   prev.innerHTML = '<div class="preview-inner">' + heroHtml + bylineHtml + parseMarkdown(content) + '</div>';
 }
@@ -5730,6 +5744,21 @@ document.getElementById('preview').addEventListener('click', (e) => {
 // click-outside listener never sees these clicks — this covers it locally.
 document.getElementById('statusbar').addEventListener('click', () => {
   if (EMBED_MODE && currentMode === 'write') setMode('preview');
+});
+
+// A click anywhere in this iframe (the writing area especially) is likewise
+// invisible to Ginkgo's own click-outside listeners — a different document,
+// so it never bubbles up to theirs. Unlike the status-bar case above, there's
+// no local state to flip here (e.g. Ginkgo's mood popover lives entirely in
+// its own document), so this just notifies the parent a click happened, for
+// it to treat as "clicked outside my own popovers." Attached to body (like
+// the preview click-to-edit listener above) rather than document, and on
+// the bubble phase — CodeMirror's own event handling only reliably leaves
+// that combination alone.
+document.body.addEventListener('click', () => {
+  if (EMBED_MODE && window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'EDITOR_CLICKED' }, location.origin);
+  }
 });
 
 init();
