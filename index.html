@@ -941,6 +941,7 @@ window.addEventListener('message', (e) => {
     setHeroImagePosition(msg.position);
   } else if (msg.type === 'EDITOR_CLICKED') {
     document.getElementById('mood-popover').style.display = 'none';
+    document.getElementById('tag-popover').style.display = 'none';
   }
 });
 
@@ -1356,6 +1357,8 @@ document.getElementById('tag-input').addEventListener('keydown', (e) => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#tag-popover-wrap')) document.getElementById('tag-popover').style.display = 'none';
 });
+// A click inside the editor iframe never reaches the listener above (see
+// the matching note by the mood popover) — handled via EDITOR_CLICKED instead.
 
 function updateMoodButton(moodKey) {
   document.getElementById('btn-mood-entry').textContent = moodKey ? moodEmoji(moodKey) : '😶';
