@@ -1929,11 +1929,64 @@ function scrollListToDate(dateKeyStr) {
   setTimeout(() => { programmaticScroll = false; }, 500);
 }
 
+// Updates an already-rendered row's fields in place rather than replacing
+// the DOM node wholesale (renderEntryRow + replaceWith used to do that) —
+// autosave calls this on every debounced save while typing, and swapping
+// in a brand-new node each time (forcing the thumbnail <img> to redecode
+// and resetting any hover/transition state) is what caused the sidebar
+// row to visibly flash as you wrote.
 function patchListRowInPlace(meta) {
   const row = listEl.querySelector(`.entry-row[data-id="${meta.id}"]`);
-  if (row) {
-    const fresh = renderEntryRow(meta);
-    row.replaceWith(fresh);
+  if (!row) return;
+  row.classList.toggle('conflict', !!meta.conflictOf);
+
+  const thumbWrap = row.querySelector('.entry-thumb-wrap');
+  const existingThumb = thumbWrap.querySelector('.entry-thumb');
+  if (meta.thumbnail) {
+    if (existingThumb.tagName !== 'IMG' || existingThumb.src !== meta.thumbnail) {
+      const img = document.createElement('img');
+      img.className = 'entry-thumb';
+      img.alt = '';
+      img.src = meta.thumbnail;
+      existingThumb.replaceWith(img);
+    }
+  } else if (existingThumb.tagName !== 'DIV') {
+    const d = new Date(meta.createdAt);
+    const dow = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+    const placeholder = document.createElement('div');
+    placeholder.className = 'entry-thumb placeholder';
+    placeholder.innerHTML = `<span class="entry-thumb-dow">${dow}</span><span class="entry-thumb-day">${d.getDate()}</span>`;
+    existingThumb.replaceWith(placeholder);
+  }
+
+  let moodBadge = thumbWrap.querySelector('.entry-row-mood-badge');
+  if (meta.mood) {
+    if (!moodBadge) {
+      moodBadge = document.createElement('span');
+      moodBadge.className = 'entry-row-mood-badge';
+      thumbWrap.appendChild(moodBadge);
+    }
+    moodBadge.textContent = moodEmoji(meta.mood);
+    if (meta.moodNote) moodBadge.title = meta.moodNote; else moodBadge.removeAttribute('title');
+  } else if (moodBadge) {
+    moodBadge.remove();
+  }
+
+  row.querySelector('.entry-row-title').textContent = (meta.favorite ? '★ ' : '') + (meta.title || 'untitled');
+  row.querySelector('.entry-row-meta').textContent = formatEntryTimestamp(meta.createdAt);
+  row.querySelector('.entry-row-preview').textContent = meta.preview || '';
+
+  const textEl = row.querySelector('.entry-row-text');
+  let tagsEl = row.querySelector('.entry-row-tags');
+  if (meta.tags && meta.tags.length) {
+    if (!tagsEl) {
+      tagsEl = document.createElement('div');
+      tagsEl.className = 'entry-row-tags';
+      textEl.appendChild(tagsEl);
+    }
+    tagsEl.innerHTML = meta.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('');
+  } else if (tagsEl) {
+    tagsEl.remove();
   }
 }
 
