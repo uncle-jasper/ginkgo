@@ -4583,7 +4583,7 @@ document.addEventListener('keyup', e => {
     konamiPos++;
     if (konamiPos === KONAMI.length) {
       konamiPos = 0;
-      if (document.body.dataset.theme === 'terminal') {
+      if (document.body.dataset.theme === 'terminal' && document.body.classList.contains('crt-on')) {
         // Erase the 'ba' that was typed into the editor during the sequence
         if (view && view.hasFocus) {
           const cur = view.state.selection.main.from;
@@ -4945,7 +4945,7 @@ THEMES & FONTS
   In terminal theme, CRT mode adds scanlines, a vignette, subtle
   screen flicker, and replaces the cursor with a glowing block.
 
-  Try the Konami code in terminal theme for something extra.
+  Try the Konami code in terminal theme with CRT on for something extra.
 
 
 ─────────────────────────────────────────────────────────────────
