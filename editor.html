@@ -630,9 +630,9 @@
   body[data-theme="moonwalker"] ::selection { background: rgba(1,39,221,0.35); }
   body[data-theme="terminal"] { --bg:#0a0a0a; --surface:#0f0f0f; --text:#22cc22; --accent:#0a5c0a; --muted:#1a7a1a; --border:#1a3a1a; }
   body[data-theme="terminal"] .cm-content,
-  body[data-theme="terminal"] #preview { text-shadow: 0 0 8px rgba(51,255,51,0.35); }
+  body[data-theme="terminal"] #preview { text-shadow: 0 0 8px color-mix(in srgb, currentColor 44%, transparent); }
   body[data-theme="terminal"].crt-on .cm-content,
-  body[data-theme="terminal"].crt-on #preview { text-shadow: 0 0 10px rgba(51,255,51,0.55), 0 0 3px rgba(51,255,51,0.7); -webkit-font-smoothing: none; -moz-osx-font-smoothing: unset; }
+  body[data-theme="terminal"].crt-on #preview { text-shadow: 0 0 10px color-mix(in srgb, currentColor 69%, transparent), 0 0 3px color-mix(in srgb, currentColor 88%, transparent); -webkit-font-smoothing: none; -moz-osx-font-smoothing: unset; }
   /* Byline/mood metadata is small, dim (opacity ~0.75-0.8) muted text — the
      full-strength CRT glow above (tuned for normal-size body copy) blows it
      out completely at that size/opacity, reading as an unreadable smear
@@ -640,8 +640,11 @@
      legible while everything else keeps the full phosphor bloom. */
   body[data-theme="terminal"].crt-on .cm-mood-line,
   body[data-theme="terminal"].crt-on .dateline-chip,
-  body[data-theme="terminal"].crt-on #preview p.preview-byline { text-shadow: 0 0 1px rgba(51,255,51,0.9), 0 0 4px rgba(51,255,51,0.4); -webkit-font-smoothing: antialiased; }
-  body[data-theme="terminal"] #statusbar { text-shadow: 0 0 6px rgba(51,255,51,0.4); }
+  body[data-theme="terminal"].crt-on #preview p.preview-byline { text-shadow: 0 0 1px currentColor, 0 0 4px color-mix(in srgb, currentColor 50%, transparent); -webkit-font-smoothing: antialiased; }
+  /* links: a pale phosphor, brighter than the text; the dark accent was hard to read and blurred */
+  body[data-theme="terminal"]:not(.doogie-journal) #preview a,
+  body[data-theme="terminal"]:not(.doogie-journal) #preview .footnote-ref { color: #7dff7d; }
+  body[data-theme="terminal"] #statusbar { text-shadow: 0 0 6px color-mix(in srgb, currentColor 50%, transparent); }
   body[data-theme="terminal"] button,
   body[data-theme="terminal"] select,
   body[data-theme="terminal"] .custom-dropdown,
@@ -673,11 +676,13 @@
   /* ── Amber CRT ── */
   body[data-theme="terminal"].amber-crt { --text:#ffb000; --accent:#7a4a00; --muted:#a06a00; --border:#3a2200; }
   body[data-theme="terminal"].amber-crt .cm-content,
-  body[data-theme="terminal"].amber-crt #preview { text-shadow: 0 0 10px rgba(255,176,0,0.55), 0 0 3px rgba(255,176,0,0.7); -webkit-font-smoothing: none; -moz-osx-font-smoothing: unset; }
+  body[data-theme="terminal"].amber-crt #preview { text-shadow: 0 0 10px color-mix(in srgb, currentColor 55%, transparent), 0 0 3px color-mix(in srgb, currentColor 70%, transparent); -webkit-font-smoothing: none; -moz-osx-font-smoothing: unset; }
   body[data-theme="terminal"].amber-crt .cm-mood-line,
   body[data-theme="terminal"].amber-crt .dateline-chip,
-  body[data-theme="terminal"].amber-crt #preview p.preview-byline { text-shadow: 0 0 1px rgba(255,176,0,0.9), 0 0 4px rgba(255,176,0,0.4); -webkit-font-smoothing: antialiased; }
-  body[data-theme="terminal"].amber-crt #statusbar { text-shadow: 0 0 6px rgba(255,176,0,0.4); }
+  body[data-theme="terminal"].amber-crt #preview p.preview-byline { text-shadow: 0 0 1px color-mix(in srgb, currentColor 90%, transparent), 0 0 4px color-mix(in srgb, currentColor 40%, transparent); -webkit-font-smoothing: antialiased; }
+  body[data-theme="terminal"].amber-crt #preview a,
+  body[data-theme="terminal"].amber-crt #preview .footnote-ref { color: #ffd27a; }
+  body[data-theme="terminal"].amber-crt #statusbar { text-shadow: 0 0 6px color-mix(in srgb, currentColor 40%, transparent); }
   body[data-theme="terminal"].amber-crt button,
   body[data-theme="terminal"].amber-crt select,
   body[data-theme="terminal"].amber-crt .custom-dropdown,
