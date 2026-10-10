@@ -655,7 +655,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.4.2</div>
+    <div id="about-version">version 1.5.0</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <a id="about-coffee-link" href="https://buymeacoffee.com/dandanmian" target="_blank" rel="noopener noreferrer">buy me a coffee</a>
     <button id="btn-about-close">Close</button>
@@ -863,10 +863,9 @@ const DOOGIE_JOURNAL_PALETTE = { bg: '#0000AA', surface: '#0000AA', text: '#EAEA
 function applyTheme(settings) {
   if (!settings) return;
   let p;
-  if (settings.theme === 'custom') {
-    p = { bg: settings.customBg, surface: settings.customBg, text: settings.customText, accent: settings.customAccent, muted: settings.customAccent, border: settings.customAccent };
-  } else if (settings.theme === 'custom2') {
-    p = { bg: settings.custom2Bg, surface: settings.custom2Bg, text: settings.custom2Text, accent: settings.custom2Accent, muted: settings.custom2Accent, border: settings.custom2Accent };
+  if (['custom', 'custom2', 'custom3'].includes(settings.theme)) {
+    const bg = settings[settings.theme + 'Bg'], text = settings[settings.theme + 'Text'], accent = settings[settings.theme + 'Accent'];
+    p = { bg, surface: bg, text, accent, muted: accent, border: accent };
   } else {
     p = THEME_PALETTE[settings.theme] || THEME_PALETTE.parchment;
   }

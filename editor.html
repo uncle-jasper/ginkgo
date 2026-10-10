@@ -166,6 +166,7 @@
      rather than via caret-color. */
   body.embed-mode.no-entry-open #editor-cm { pointer-events: none; }
   body.embed-mode.no-entry-open .cm-cursor { display: none; }
+  body.embed-mode.no-entry-open .tree-cursor-shape { display: none; }
 
   /* #quick-settings gets hoisted out from under the now-hidden #header at
      init time (see init()) so it can still render when toggled open — its
@@ -304,6 +305,9 @@
     transition: border-color 0.2s;
   }
   .hex-input:focus { border-color: var(--muted); }
+  .hex-input.custom-name { width: 118px; }
+  .color-pair select { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11px; outline: none; padding: 3px 6px; cursor: pointer; }
+  .color-pair button { font-size: 11px; padding: 3px 8px; }
 
   /* ── Editor area ── */
   #main {
@@ -711,6 +715,19 @@
   }
   body[data-theme="terminal"].amber-crt .cm-cursor,
   body[data-theme="terminal"].amber-crt .cm-dropCursor { background-color: #ffb000; box-shadow: 0 0 10px rgba(255,176,0,0.55), 0 0 3px rgba(255,176,0,0.7); }
+
+  /* ── Block and underline cursors: custom themes, Terminal CRT, Amber CRT and Doogie Journal.
+        shapeCursorPlugin draws them (.tree-cursor-shape) the size of the character they sit on, and
+        CodeMirror's bar steps aside (.tree-shape-cursor-on). A custom theme's block is tinted, not solid,
+        so the letter under it stays readable. The CRT rules above now only shape the drop cursor. ── */
+  .tree-cursor-shape { position: absolute; display: none; pointer-events: none; z-index: 150; animation: cm-blink 1s infinite; }
+  .cm-focused .tree-cursor-shape { display: block; }
+  .tree-shape-cursor-on .cm-cursorLayer .cm-cursor { display: none !important; }
+  .tree-cursor-shape.is-block { background-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .tree-cursor-shape.is-underline { background-color: var(--accent); }
+  body[data-theme="terminal"].crt-on .tree-cursor-shape.is-block { background-color: #33ff33; box-shadow: 0 0 10px rgba(51,255,51,0.55), 0 0 3px rgba(51,255,51,0.7); }
+  body[data-theme="terminal"].amber-crt .tree-cursor-shape.is-block { background-color: #ffb000; box-shadow: 0 0 10px rgba(255,176,0,0.55), 0 0 3px rgba(255,176,0,0.7); }
+  body[data-theme="terminal"].doogie-journal .tree-cursor-shape.is-underline { background-color: var(--text); box-shadow: none; }
 
   /* ── Selection visibility fixes for themes with dark accent colors ── */
   body[data-theme="dark"] .cm-selectionBackground,
@@ -1478,6 +1495,7 @@
       <option value="terminal">terminal</option>
       <option value="custom">custom…</option>
       <option value="custom2">custom 2…</option>
+      <option value="custom3">custom 3…</option>
     </select>
     <span id="theme-label" title="style">style</span>
     <div id="quick-settings">
@@ -1496,11 +1514,13 @@
         <div class="settings-theme-item" data-value="terminal"><span class="theme-swatch" style="background:#0a0a0a;outline:1px solid #1a3a1a"></span>terminal</div>
         <div class="settings-theme-item" data-value="custom"><span class="theme-swatch theme-swatch-custom"></span>custom…</div>
         <div class="settings-theme-item" data-value="custom2"><span class="theme-swatch theme-swatch-custom"></span>custom 2…</div>
+        <div class="settings-theme-item" data-value="custom3"><span class="theme-swatch theme-swatch-custom"></span>custom 3…</div>
       </div>
       <div id="settings-crt-row" class="settings-row">
         <input type="checkbox" id="chk-crt">
         <label for="chk-crt">CRT mode</label>
       </div>
+      <input id="custom-theme-file" type="file" accept=".json,application/json" style="display:none">
       <div id="custom-colors" style="display:none; margin-top:10px;">
         <div class="color-pair" style="margin-bottom:6px;">
           <span>bg</span>
@@ -1512,10 +1532,26 @@
           <input type="color" id="color-text" value="#2c2416">
           <input type="text" id="hex-text" value="#2c2416" class="hex-input" maxlength="7" spellcheck="false">
         </div>
-        <div class="color-pair">
+        <div class="color-pair" style="margin-bottom:6px;">
           <span>accent</span>
           <input type="color" id="color-accent" value="#8b6e4e">
           <input type="text" id="hex-accent" value="#8b6e4e" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="color-pair" style="margin-bottom:6px;">
+          <span>name</span>
+          <input type="text" id="custom-name" class="hex-input custom-name" maxlength="24" placeholder="custom" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="color-pair" style="margin-bottom:8px;">
+          <span>cursor</span>
+          <select id="custom-cursor">
+            <option value="line">line</option>
+            <option value="block">block</option>
+            <option value="underline">underline</option>
+          </select>
+        </div>
+        <div class="color-pair">
+          <button id="custom-export" title="Save this theme as a file">export</button>
+          <button id="custom-import" title="Load a theme file into this slot">import</button>
         </div>
       </div>
       <div id="custom-colors-2" style="display:none; margin-top:10px;">
@@ -1529,10 +1565,59 @@
           <input type="color" id="color-text-2" value="#2c2416">
           <input type="text" id="hex-text-2" value="#2c2416" class="hex-input" maxlength="7" spellcheck="false">
         </div>
-        <div class="color-pair">
+        <div class="color-pair" style="margin-bottom:6px;">
           <span>accent</span>
           <input type="color" id="color-accent-2" value="#8b6e4e">
           <input type="text" id="hex-accent-2" value="#8b6e4e" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="color-pair" style="margin-bottom:6px;">
+          <span>name</span>
+          <input type="text" id="custom-name-2" class="hex-input custom-name" maxlength="24" placeholder="custom 2" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="color-pair" style="margin-bottom:8px;">
+          <span>cursor</span>
+          <select id="custom-cursor-2">
+            <option value="line">line</option>
+            <option value="block">block</option>
+            <option value="underline">underline</option>
+          </select>
+        </div>
+        <div class="color-pair">
+          <button id="custom-export-2" title="Save this theme as a file">export</button>
+          <button id="custom-import-2" title="Load a theme file into this slot">import</button>
+        </div>
+      </div>
+      <div id="custom-colors-3" style="display:none; margin-top:10px;">
+        <div class="color-pair" style="margin-bottom:6px;">
+          <span>bg</span>
+          <input type="color" id="color-bg-3" value="#f5f0e8">
+          <input type="text" id="hex-bg-3" value="#f5f0e8" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="color-pair" style="margin-bottom:6px;">
+          <span>text</span>
+          <input type="color" id="color-text-3" value="#2c2416">
+          <input type="text" id="hex-text-3" value="#2c2416" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="color-pair" style="margin-bottom:6px;">
+          <span>accent</span>
+          <input type="color" id="color-accent-3" value="#8b6e4e">
+          <input type="text" id="hex-accent-3" value="#8b6e4e" class="hex-input" maxlength="7" spellcheck="false">
+        </div>
+        <div class="color-pair" style="margin-bottom:6px;">
+          <span>name</span>
+          <input type="text" id="custom-name-3" class="hex-input custom-name" maxlength="24" placeholder="custom 3" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="color-pair" style="margin-bottom:8px;">
+          <span>cursor</span>
+          <select id="custom-cursor-3">
+            <option value="line">line</option>
+            <option value="block">block</option>
+            <option value="underline">underline</option>
+          </select>
+        </div>
+        <div class="color-pair">
+          <button id="custom-export-3" title="Save this theme as a file">export</button>
+          <button id="custom-import-3" title="Load a theme file into this slot">import</button>
         </div>
       </div>
       <hr class="settings-divider" style="margin-top:12px;">
@@ -1554,6 +1639,7 @@
       <div class="settings-row" style="margin-top:8px;">
         <label for="settings-font-size-select" style="min-width:36px;">size</label>
         <select id="settings-font-size-select">
+          <option value="14">14px</option>
           <option value="16">16px</option>
           <option value="18" selected>18px</option>
           <option value="20">20px</option>
@@ -1814,7 +1900,7 @@
     <p class="about-sub">A Markdown Editor</p>
     <p class="about-credit">Vibe coded by Dan</p>
     <p class="about-copy">© 2026</p>
-    <p class="about-version"><span style="font-size:13px;">v1.6.3</span><span style="font-size:11px; opacity:0.35; margin: 0 5px;">·</span><a href="#" style="font-size:11px; color:var(--accent); opacity:0.5; text-decoration:none;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.5'" onclick="document.getElementById('about-overlay').style.display='none'; openReadmeTab(); return false;">readme</a></p>
+    <p class="about-version"><span style="font-size:13px;">v1.7.0</span><span style="font-size:11px; opacity:0.35; margin: 0 5px;">·</span><a href="#" style="font-size:11px; color:var(--accent); opacity:0.5; text-decoration:none;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.5'" onclick="document.getElementById('about-overlay').style.display='none'; openReadmeTab(); return false;">readme</a></p>
     <p style="margin-top:4px; font-size:11px;"><a href="https://buymeacoffee.com/dandanmian" target="_blank" style="color:var(--accent); opacity:0.7; text-decoration:none;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">☕ buy me a coffee</a></p>
   </div>
 </div>
@@ -2507,6 +2593,75 @@ function getZenParagraphLines(state) {
   return { fromLine: curLine.number, toLine: e };
 }
 
+// ── Block and underline cursors ──────────────────────────────────────
+// For custom themes, Terminal CRT, Amber CRT and Doogie Journal. CodeMirror's own cursor is a bar with no
+// width, and a fixed 1ch only fits a monospace font, so this draws one the size of the character it sits on.
+function cursorShape() {
+  const b = document.body.classList;
+  if (b.contains('cursor-block'))     return 'block';
+  if (b.contains('cursor-underline')) return 'underline';
+  if (document.body.dataset.theme !== 'terminal') return 'line';
+  if (b.contains('doogie-journal'))   return 'underline';
+  return (b.contains('crt-on') || b.contains('amber-crt')) ? 'block' : 'line';
+}
+
+const shapeCursorPlugin = ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.view = view;
+    this.el = view.scrollDOM.appendChild(document.createElement('div'));
+    this.el.className = 'tree-cursor-shape';
+    this.measure = { key: this, read: v => this.read(v), write: m => this.write(m) };
+    // The shape follows the theme (on <body>) and the font and size (on <html>). None of those go through
+    // CodeMirror, so redraw at once when they change, and again when a newly picked font has loaded.
+    this.sync = () => { try { this.write(this.read(view)); } catch(e) {} };
+    this.observer = new MutationObserver(this.sync);
+    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    this.observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', this.sync);
+    view.requestMeasure(this.measure);
+  }
+  update(u) {
+    // restart the blink on each move, as CodeMirror does for its own cursor
+    if (u.docChanged || u.selectionSet) this.el.style.animationName = this.el.style.animationName === 'cm-blink2' ? 'cm-blink' : 'cm-blink2';
+    u.view.requestMeasure(this.measure);
+  }
+  read(view) {
+    const shape = cursorShape(), sel = view.state.selection.main;
+    if (shape === 'line') return null;
+    const at = sel.empty ? view.coordsAtPos(sel.head, 1) : null;
+    if (!at) return { shape };
+    // as wide as the character ahead; at the end of a line, a plain character
+    let width = view.defaultCharacterWidth;
+    const line = view.state.doc.lineAt(sel.head);
+    if (sel.head < line.to) {
+      const next = view.coordsAtPos(sel.head + (line.text.codePointAt(sel.head - line.from) > 0xffff ? 2 : 1), -1);
+      if (next && Math.abs(next.top - at.top) < 2 && next.left - at.left > 1) width = next.left - at.left;
+    }
+    const box = view.scrollDOM.getBoundingClientRect();
+    return { shape, width, height: at.bottom - at.top,
+             left: at.left - box.left + view.scrollDOM.scrollLeft, top: at.top - box.top + view.scrollDOM.scrollTop };
+  }
+  write(m) {
+    this.view.dom.classList.toggle('tree-shape-cursor-on', !!m);
+    const s = this.el.style;
+    if (!m || m.left === undefined) { s.display = 'none'; return; }
+    const block = m.shape === 'block';
+    const thick = Math.max(2, Math.round(m.height * 0.09));
+    this.el.classList.toggle('is-block', block);
+    this.el.classList.toggle('is-underline', !block);
+    s.display = '';
+    s.left    = m.left + 'px';
+    s.top     = (block ? m.top : m.top + m.height - thick) + 'px';
+    s.width   = m.width + 'px';
+    s.height  = (block ? m.height : thick) + 'px';
+  }
+  destroy() {
+    this.observer.disconnect();
+    if (document.fonts && document.fonts.removeEventListener) document.fonts.removeEventListener('loadingdone', this.sync);
+    this.el.remove();
+  }
+});
+
 const zenModePlugin = ViewPlugin.fromClass(class {
   constructor(view) { this.decorations = this._build(view); }
   update(u) {
@@ -2663,6 +2818,7 @@ function buildExtensions() {
     datelineExpandedField,
     datelinePlugin,
     zenModePlugin,
+    shapeCursorPlugin,
     inlineFormattingPlugin,
     lineDecoPlugin,
     spellcheckCompartment.of(EditorView.contentAttributes.of({ spellcheck: 'true' })),
@@ -3645,10 +3801,19 @@ function rgbToHex(r,g,b) { return '#'+[r,g,b].map(v=>Math.max(0,Math.min(255,Mat
 function adjustHex(h,a) { const [r,g,b]=hexToRgb(h); return rgbToHex(r+a,g+a,b+a); }
 function blendHex(f,b,t) { const[r1,g1,b1]=hexToRgb(f);const[r2,g2,b2]=hexToRgb(b);return rgbToHex(r1*t+r2*(1-t),g1*t+g2*(1-t),b1*t+b2*(1-t)); }
 
+// The three custom themes. sfx is the id suffix of each one's controls (the first has none).
+const CUSTOM_SLOTS = [
+  { key: 'custom',  sfx: '',   label: 'custom' },
+  { key: 'custom2', sfx: '-2', label: 'custom 2' },
+  { key: 'custom3', sfx: '-3', label: 'custom 3' },
+];
+const CURSOR_STYLES = ['line', 'block', 'underline'];
+const customSlot = val => CUSTOM_SLOTS.find(slot => slot.key === val);
+
 function applyCustomColors() {
-  const val = document.getElementById('theme-select').value;
-  if (val !== 'custom' && val !== 'custom2') return;
-  const sfx    = val === 'custom2' ? '-2' : '';
+  const slot = customSlot(document.getElementById('theme-select').value);
+  if (!slot) return;
+  const sfx    = slot.sfx;
   const bg     = document.getElementById('color-bg'     + sfx).value;
   const text   = document.getElementById('color-text'   + sfx).value;
   const accent = document.getElementById('color-accent' + sfx).value;
@@ -3658,12 +3823,61 @@ function applyCustomColors() {
   document.documentElement.style.setProperty('--accent', accent);
   document.documentElement.style.setProperty('--muted',  blendHex(text,bg,0.5));
   document.documentElement.style.setProperty('--border', blendHex(text,bg,0.15));
+  const cursor = document.getElementById('custom-cursor' + sfx).value;
+  document.body.classList.toggle('cursor-block',     cursor === 'block');
+  document.body.classList.toggle('cursor-underline', cursor === 'underline');
 }
 
 function clearCustomColors() {
   ['--bg','--surface','--text','--accent','--muted','--border'].forEach(v =>
     document.documentElement.style.removeProperty(v)
   );
+  document.body.classList.remove('cursor-block', 'cursor-underline');
+}
+
+// A named custom theme goes by its name in the theme list, with (C1) to (C3) after it so it still reads as custom
+function syncCustomNames() {
+  CUSTOM_SLOTS.forEach((slot, i) => {
+    const own  = document.getElementById('custom-name' + slot.sfx).value.trim();
+    const name = own ? own + ' (C' + (i + 1) + ')' : slot.label + '…';
+    document.querySelector('#theme-select option[value="' + slot.key + '"]').textContent = name;
+    document.querySelector('.settings-theme-item[data-value="' + slot.key + '"]').lastChild.textContent = name;
+  });
+}
+
+// A custom theme as a file: its name, three colours and cursor. The same file opens in Tree, Ginkgo
+// and the Obsidian plugin. Built-in themes can't be exported or imported over.
+function exportCustomTheme(slot) {
+  const v     = id => document.getElementById(id + slot.sfx).value;
+  const name  = v('custom-name').trim();
+  const theme = { treeTheme: 1, name, bg: v('color-bg'), text: v('color-text'), accent: v('color-accent'), cursor: v('custom-cursor') };
+  const blob  = new Blob([JSON.stringify(theme, null, 2) + '\n'], { type: 'application/json' });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a');
+  a.href      = url;
+  a.download  = ((name || slot.label).replace(/[\\/:*?"<>|]/g, '').trim() || slot.label) + '.tree-theme.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  typeStatusMessage('theme exported.');
+}
+
+function importCustomTheme(slot, file) {
+  file.text().then(raw => {
+    let t = null;
+    try { t = JSON.parse(raw); } catch(e) {}
+    const hex = /^#[0-9a-fA-F]{6}$/;
+    if (!t || !hex.test(t.bg) || !hex.test(t.text) || !hex.test(t.accent)) { typeStatusMessage('not a theme file.'); return; }
+    ['bg','text','accent'].forEach(key => {
+      document.getElementById('color-' + key + slot.sfx).value = t[key];
+      document.getElementById('hex-'   + key + slot.sfx).value = t[key].toLowerCase();
+    });
+    document.getElementById('custom-name'   + slot.sfx).value = typeof t.name === 'string' ? t.name.trim().slice(0, 24) : '';
+    document.getElementById('custom-cursor' + slot.sfx).value = CURSOR_STYLES.includes(t.cursor) ? t.cursor : 'line';
+    syncCustomNames();
+    applyCustomColors();
+    saveSettings();
+    typeStatusMessage('theme imported.');
+  });
 }
 
 function syncThemeUI() {
@@ -3676,8 +3890,9 @@ function syncThemeUI() {
   const crtRow = document.getElementById('settings-crt-row');
   crtRow.style.display = (val === 'terminal') ? 'flex' : 'none';
   // Custom colors panels
-  document.getElementById('custom-colors').style.display   = (val === 'custom')  ? 'block' : 'none';
-  document.getElementById('custom-colors-2').style.display = (val === 'custom2') ? 'block' : 'none';
+  CUSTOM_SLOTS.forEach(slot => {
+    document.getElementById('custom-colors' + slot.sfx).style.display = (val === slot.key) ? 'block' : 'none';
+  });
   // Amber CRT / Doogie Journal: only valid in terminal
   if (val !== 'terminal') {
     document.body.classList.remove('amber-crt');
@@ -3689,8 +3904,8 @@ function setTheme(val) {
   if (justWriteActive) return;
   const select = document.getElementById('theme-select');
   select.value = val;
-  document.body.dataset.theme = (val === 'custom' || val === 'custom2') ? '' : (val || 'parchment');
-  if (val === 'custom' || val === 'custom2') applyCustomColors();
+  document.body.dataset.theme = customSlot(val) ? '' : (val || 'parchment');
+  if (customSlot(val)) applyCustomColors();
   else clearCustomColors();
   if (val !== 'terminal') {
     document.body.classList.remove('amber-crt');
@@ -3737,23 +3952,38 @@ document.getElementById('chk-crt').addEventListener('change', function() {
   saveSettings();
 });
 
-['bg','text','accent'].forEach(key => {
-  const picker = document.getElementById('color-' + key);
-  const hex    = document.getElementById('hex-' + key);
-  picker.addEventListener('input', () => { hex.value = picker.value; applyCustomColors(); saveSettings(); });
-  hex.addEventListener('input', () => {
-    if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { picker.value = hex.value; applyCustomColors(); saveSettings(); }
+let importSlot = null;   // the custom theme the file picker is filling
+CUSTOM_SLOTS.forEach(slot => {
+  ['bg','text','accent'].forEach(key => {
+    const picker = document.getElementById('color-' + key + slot.sfx);
+    const hex    = document.getElementById('hex-' + key + slot.sfx);
+    picker.addEventListener('input', () => { hex.value = picker.value; applyCustomColors(); saveSettings(); });
+    hex.addEventListener('input', () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { picker.value = hex.value; applyCustomColors(); saveSettings(); }
+    });
+  });
+  document.getElementById('custom-name'   + slot.sfx).addEventListener('input',  () => { syncCustomNames(); saveSettings(); });
+  document.getElementById('custom-cursor' + slot.sfx).addEventListener('change', () => { applyCustomColors(); saveSettings(); });
+  document.getElementById('custom-export' + slot.sfx).addEventListener('click',  () => exportCustomTheme(slot));
+  document.getElementById('custom-import' + slot.sfx).addEventListener('click',  () => {
+    importSlot = slot;
+    document.getElementById('custom-theme-file').click();
   });
 });
 
-['bg','text','accent'].forEach(key => {
-  const picker = document.getElementById('color-' + key + '-2');
-  const hex    = document.getElementById('hex-' + key + '-2');
-  picker.addEventListener('input', () => { hex.value = picker.value; applyCustomColors(); saveSettings(); });
-  hex.addEventListener('input', () => {
-    if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { picker.value = hex.value; applyCustomColors(); saveSettings(); }
-  });
+document.getElementById('custom-theme-file').addEventListener('change', function() {
+  if (this.files[0] && importSlot) importCustomTheme(importSlot, this.files[0]);
+  this.value = '';   // so the same file can be picked again
 });
+
+// Just Write locks the look, custom themes included
+function lockCustomControls(locked) {
+  CUSTOM_SLOTS.forEach(slot => {
+    ['color-bg','color-text','color-accent','hex-bg','hex-text','hex-accent','custom-name','custom-cursor','custom-export','custom-import'].forEach(id => {
+      const el = document.getElementById(id + slot.sfx); if (el) el.disabled = locked;
+    });
+  });
+}
 
 // ── Font & size ──────────────────────────────────────────────────────
 document.getElementById('settings-font-select').addEventListener('change', function() {
@@ -4330,6 +4560,15 @@ function saveSettings() {
       custom2Bg:     document.getElementById('color-bg-2').value,
       custom2Text:   document.getElementById('color-text-2').value,
       custom2Accent: document.getElementById('color-accent-2').value,
+      custom3Bg:     document.getElementById('color-bg-3').value,
+      custom3Text:   document.getElementById('color-text-3').value,
+      custom3Accent: document.getElementById('color-accent-3').value,
+      customName:    document.getElementById('custom-name').value.trim(),
+      custom2Name:   document.getElementById('custom-name-2').value.trim(),
+      custom3Name:   document.getElementById('custom-name-3').value.trim(),
+      customCursor:  document.getElementById('custom-cursor').value,
+      custom2Cursor: document.getElementById('custom-cursor-2').value,
+      custom3Cursor: document.getElementById('custom-cursor-3').value,
       showChars:    document.getElementById('chk-show-chars').checked,
       showLines:    document.getElementById('chk-show-lines').checked,
       showReadtime: document.getElementById('chk-show-readtime').checked,
@@ -4373,14 +4612,22 @@ function loadSettings() {
     const s = JSON.parse(raw);
     if (s.theme !== undefined) {
       document.getElementById('theme-select').value = s.theme;
-      document.body.dataset.theme = (s.theme === 'custom' || s.theme === 'custom2') ? '' : (s.theme || 'parchment');
+      document.body.dataset.theme = customSlot(s.theme) ? '' : (s.theme || 'parchment');
       if (s.customBg)      { document.getElementById('color-bg').value      = s.customBg;      document.getElementById('hex-bg').value      = s.customBg; }
       if (s.customText)    { document.getElementById('color-text').value    = s.customText;    document.getElementById('hex-text').value    = s.customText; }
       if (s.customAccent)  { document.getElementById('color-accent').value  = s.customAccent;  document.getElementById('hex-accent').value  = s.customAccent; }
       if (s.custom2Bg)     { document.getElementById('color-bg-2').value    = s.custom2Bg;     document.getElementById('hex-bg-2').value    = s.custom2Bg; }
       if (s.custom2Text)   { document.getElementById('color-text-2').value  = s.custom2Text;   document.getElementById('hex-text-2').value  = s.custom2Text; }
       if (s.custom2Accent) { document.getElementById('color-accent-2').value= s.custom2Accent; document.getElementById('hex-accent-2').value= s.custom2Accent; }
-      if (s.theme === 'custom' || s.theme === 'custom2') applyCustomColors();
+      if (s.custom3Bg)     { document.getElementById('color-bg-3').value    = s.custom3Bg;     document.getElementById('hex-bg-3').value    = s.custom3Bg; }
+      if (s.custom3Text)   { document.getElementById('color-text-3').value  = s.custom3Text;   document.getElementById('hex-text-3').value  = s.custom3Text; }
+      if (s.custom3Accent) { document.getElementById('color-accent-3').value= s.custom3Accent; document.getElementById('hex-accent-3').value= s.custom3Accent; }
+      CUSTOM_SLOTS.forEach(slot => {
+        if (s[slot.key + 'Name'])   document.getElementById('custom-name'   + slot.sfx).value = s[slot.key + 'Name'];
+        if (CURSOR_STYLES.includes(s[slot.key + 'Cursor'])) document.getElementById('custom-cursor' + slot.sfx).value = s[slot.key + 'Cursor'];
+      });
+      syncCustomNames();
+      if (customSlot(s.theme)) applyCustomColors();
     }
     if (s.font) {
       document.getElementById('settings-font-select').value = s.font;
@@ -4691,9 +4938,7 @@ function activateJustWrite() {
 
   document.body.classList.add('just-write');
   document.getElementById('theme-select').disabled = true;
-  ['color-bg','color-text','color-accent','hex-bg','hex-text','hex-accent','color-bg-2','color-text-2','color-accent-2','hex-bg-2','hex-text-2','hex-accent-2'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.disabled = true;
-  });
+  lockCustomControls(true);
 
   const until = Date.now() + JW_MINUTES * 60 * 1000;
   try { localStorage.setItem(JW_KEY, JSON.stringify({ until, wordStart: justWriteWordStart, tabId: justWriteTabId })); } catch(e) {}
@@ -4721,9 +4966,7 @@ function deactivateJustWrite(msg) {
 
   document.body.classList.remove('just-write');
   document.getElementById('theme-select').disabled = false;
-  ['color-bg','color-text','color-accent','hex-bg','hex-text','hex-accent','color-bg-2','color-text-2','color-accent-2','hex-bg-2','hex-text-2','hex-accent-2'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.disabled = false;
-  });
+  lockCustomControls(false);
 
   try { localStorage.removeItem(JW_KEY); } catch(e) {}
   if (msg) typeStatusMessage(msg);
@@ -4755,7 +4998,7 @@ document.addEventListener('keydown', e => {
 
 // ── README tab ────────────────────────────────────────────────────────
 const README_CONTENT = `TREE EDITOR
-Version 1.6.2
+Version 1.7.0
 
 A distraction-free markdown editor built on CodeMirror 6.
 
@@ -4971,7 +5214,9 @@ THEMES & FONTS
 
   Click the theme label in the toolbar to open quick settings:
   choose a theme, toggle CRT mode, and adjust font and size.
-  Custom theme lets you set your own background, text, and accent.
+  Three custom themes: set your own background, text and accent,
+  give each a name and a line, block or underline cursor, and
+  export or import them as files to share.
 
   In terminal theme, CRT mode adds scanlines, a vignette, subtle
   screen flicker, and replaces the cursor with a glowing block.
@@ -5614,9 +5859,7 @@ function init() {
         justWriteTabId     = activeTabId;
         document.body.classList.add('just-write');
         document.getElementById('theme-select').disabled = true;
-        ['color-bg','color-text','color-accent','hex-bg','hex-text','hex-accent','color-bg-2','color-text-2','color-accent-2','hex-bg-2','hex-text-2','hex-accent-2'].forEach(id => {
-          const el = document.getElementById(id); if (el) el.disabled = true;
-        });
+        lockCustomControls(true);
         renderTabs();
         setTimeout(function tick() {
           if (!justWriteActive) return;
