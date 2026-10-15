@@ -2716,10 +2716,38 @@ const formatDecos = {
   Strikethrough:  Decoration.mark({ class: 'cm-tree-strike' }),
 };
 
+// Auto-pair puts the closing mark right after the cursor, so a space typed
+// before it (`*one |*`) stops Markdown reading it as a closing mark, and the
+// style blinks off and on with every word. While the cursor sits inside a
+// pair on its line, keep the span styled.
+const pendingDecos = {
+  '*':   [formatDecos.Emphasis],
+  '**':  [formatDecos.StrongEmphasis],
+  '***': [formatDecos.StrongEmphasis, formatDecos.Emphasis],
+  '~~':  [formatDecos.Strikethrough],
+};
+
+function pendingFormatRanges(state) {
+  const sel = state.selection.main;
+  if (!sel.empty) return [];
+  const line   = state.doc.lineAt(sel.head);
+  const before = line.text.slice(0, sel.head - line.from);
+  const after  = line.text.slice(sel.head - line.from);
+  const open  = /(^|[^*~\\])(\*{1,3}|~~)(?=\S)([^*~]*)$/.exec(before);
+  const close = /^([^*~]*)(\*+|~+)/.exec(after);
+  if (!open || !close || open[2] !== close[2]) return [];
+  // Only the case Markdown misses: whitespace just before the closing mark
+  const inner = open[3] + close[1];
+  if (!/\s$/.test(inner)) return [];
+  const from = line.from + open.index + open[1].length;
+  const to   = sel.head + close[1].length + close[2].length;
+  return pendingDecos[open[2]].map(deco => ({ from, to, deco }));
+}
+
 const inlineFormattingPlugin = ViewPlugin.fromClass(class {
   constructor(view) { this.decorations = this._build(view); }
   update(u) {
-    if (u.docChanged || u.viewportChanged)
+    if (u.docChanged || u.viewportChanged || u.selectionSet)
       this.decorations = this._build(u.view);
   }
   _build(view) {
@@ -2734,6 +2762,7 @@ const inlineFormattingPlugin = ViewPlugin.fromClass(class {
         },
       });
     }
+    ranges.push(...pendingFormatRanges(state));
     ranges.sort((a, b) => a.from - b.from || b.to - a.to);
     const builder = new RangeSetBuilder();
     for (const r of ranges) builder.add(r.from, r.to, r.deco);
