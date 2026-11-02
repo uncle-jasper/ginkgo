@@ -355,7 +355,7 @@
     padding-right: 0 !important;
     min-height: calc(100vh - 120px);
     color: var(--text) !important;
-    caret-color: var(--accent) !important;
+    caret-color: var(--cursor, var(--accent)) !important;
     font-family: var(--editor-font) !important;
     font-size: var(--font-size) !important;
     white-space: pre-wrap !important;
@@ -364,7 +364,7 @@
   .cm-line { padding: 0 !important; color: var(--text) !important; }
   @keyframes cm-blink  { 0%, 40% { opacity: 1; animation-timing-function: linear; } 50% { opacity: 0; } 90% { opacity: 0; animation-timing-function: linear; } 100% { opacity: 1; } }
   @keyframes cm-blink2 { 0%, 40% { opacity: 1; animation-timing-function: linear; } 50% { opacity: 0; } 90% { opacity: 0; animation-timing-function: linear; } 100% { opacity: 1; } }
-  .cm-cursor, .cm-dropCursor { border-left-color: var(--accent) !important; border-left-width: 2.5px !important; transform: scaleY(1.2); transform-origin: center center; }
+  .cm-cursor, .cm-dropCursor { border-left-color: var(--cursor, var(--accent)) !important; border-left-width: 2.5px !important; transform: scaleY(1.2); transform-origin: center center; }
   .cm-selectionBackground { background: var(--accent) !important; opacity: 0.25; }
   .cm-focused .cm-selectionBackground { background: var(--accent) !important; opacity: 0.25; }
   .cm-gutters { display: none !important; }
@@ -724,8 +724,8 @@
   .tree-cursor-shape { position: absolute; display: none; pointer-events: none; z-index: 150; animation: cm-blink 1s infinite; }
   .cm-focused .tree-cursor-shape { display: block; }
   .tree-shape-cursor-on .cm-cursorLayer .cm-cursor { display: none !important; }
-  .tree-cursor-shape.is-block { background-color: color-mix(in srgb, var(--accent) var(--block-strength, 40%), transparent); }
-  .tree-cursor-shape.is-underline { background-color: var(--accent); }
+  .tree-cursor-shape.is-block { background-color: color-mix(in srgb, var(--cursor, var(--accent)) var(--block-strength, 40%), transparent); }
+  .tree-cursor-shape.is-underline { background-color: var(--cursor, var(--accent)); }
   body[data-theme="terminal"].crt-on .tree-cursor-shape.is-block { background-color: #33ff33; box-shadow: 0 0 10px rgba(51,255,51,0.55), 0 0 3px rgba(51,255,51,0.7); }
   body[data-theme="terminal"].amber-crt .tree-cursor-shape.is-block { background-color: #ffb000; box-shadow: 0 0 10px rgba(255,176,0,0.55), 0 0 3px rgba(255,176,0,0.7); }
   body[data-theme="terminal"].doogie-journal .tree-cursor-shape.is-underline { background-color: var(--text); box-shadow: none; }
@@ -3863,6 +3863,25 @@ function blockStrength(bg, text, accent) {
   return pct;
 }
 
+// The cursor is drawn in the accent. An accent close to the background leaves a line or underline cursor invisible,
+// so a custom theme's cursor is the accent nudged toward white or black (whichever pulls away from the background
+// faster) until it reaches CURSOR_SEEN, WCAG's 3:1 for things that aren't text. Accents that already stand out are
+// left as they are, so the hue holds. Tree and the Obsidian plugin do the same.
+const CURSOR_SEEN = 3;
+function cursorColor(bg, accent) {
+  const b = hexToRgb(bg), a = hexToRgb(accent);
+  if (contrast(a, b) >= CURSOR_SEEN) return accent;
+  const toward = (end, pct) => a.map((v, i) => v + (end[i] - v) * pct / 100);
+  let best = null;
+  for (const end of [[255,255,255], [0,0,0]]) {
+    for (let pct = 1; pct <= 100; pct++) {
+      if (contrast(toward(end, pct), b) >= CURSOR_SEEN) { if (!best || pct < best.pct) best = { end, pct }; break; }
+    }
+  }
+  if (!best) best = { end: luminance(b) > 0.18 ? [0,0,0] : [255,255,255], pct: 100 };
+  return rgbToHex(...toward(best.end, best.pct));
+}
+
 function applyCustomColors() {
   const slot = customSlot(document.getElementById('theme-select').value);
   if (!slot) return;
@@ -3876,14 +3895,16 @@ function applyCustomColors() {
   document.documentElement.style.setProperty('--accent', accent);
   document.documentElement.style.setProperty('--muted',  blendHex(text,bg,0.5));
   document.documentElement.style.setProperty('--border', blendHex(text,bg,0.15));
-  document.documentElement.style.setProperty('--block-strength', blockStrength(bg, text, accent) + '%');
+  const cursorC = cursorColor(bg, accent);
+  document.documentElement.style.setProperty('--cursor', cursorC);
+  document.documentElement.style.setProperty('--block-strength', blockStrength(bg, text, cursorC) + '%');
   const cursor = document.getElementById('custom-cursor' + sfx).value;
   document.body.classList.toggle('cursor-block',     cursor === 'block');
   document.body.classList.toggle('cursor-underline', cursor === 'underline');
 }
 
 function clearCustomColors() {
-  ['--bg','--surface','--text','--accent','--muted','--border','--block-strength'].forEach(v =>
+  ['--bg','--surface','--text','--accent','--muted','--border','--cursor','--block-strength'].forEach(v =>
     document.documentElement.style.removeProperty(v)
   );
   document.body.classList.remove('cursor-block', 'cursor-underline');
