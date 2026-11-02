@@ -583,6 +583,8 @@
     white-space: nowrap;
     pointer-events: none;
   }
+  #welcome-msg.is-action { pointer-events: auto; cursor: pointer; }
+  #welcome-msg.is-action:hover { text-decoration: underline; text-underline-offset: 2px; }
   #read-time { transition: opacity 0.15s; white-space: nowrap; }
   #read-time.hidden { opacity: 0; }
   #save-indicator { opacity: 0; color: var(--accent); transition: opacity 0.4s; font-size: 11px; }
@@ -3424,6 +3426,46 @@ function typeStatusMessage(text) {
   }, 150);
 }
 
+// A status message that can be clicked: it holds while hovered and gives way at once when clicked, to the message
+// onClick hands back, if any.
+// If another message is showing, it waits its turn.
+function typeActionMessage(text, onClick) {
+  if (statusMsgBusy) { setTimeout(() => typeActionMessage(text, onClick), 250); return; }
+  statusMsgBusy = true;
+  if (focusActive) document.body.classList.add('statusbar-peek');
+  const msg    = document.getElementById('welcome-msg');
+  const readEl = document.getElementById('read-time');
+  let i = 0, typing = null, fade = null, done = false;
+  const finish = after => {
+    if (done) return; done = true;
+    clearInterval(typing); clearTimeout(fade);
+    msg.classList.remove('is-action');
+    msg.removeEventListener('click', click); msg.removeEventListener('mouseenter', hold); msg.removeEventListener('mouseleave', release);
+    msg.style.opacity = '0';
+    setTimeout(() => {
+      statusMsgBusy = false;
+      document.body.classList.remove('statusbar-peek');
+      if (document.getElementById('chk-show-readtime').checked && readEl.textContent !== '') readEl.classList.remove('hidden');
+      if (after) statusMsgQueue.unshift(after);
+            if (statusMsgQueue.length) typeStatusMessage(statusMsgQueue.shift());
+    }, 500);
+  };
+  const click   = () => finish(onClick());   // onClick may hand back a message to follow
+  const hold    = () => { clearTimeout(fade); msg.style.opacity = '1'; };
+  const release = () => { if (i >= text.length) fade = setTimeout(() => finish(), 1500); };
+  readEl.classList.add('hidden');
+  msg.classList.add('is-action');
+  msg.addEventListener('click', click); msg.addEventListener('mouseenter', hold); msg.addEventListener('mouseleave', release);
+  setTimeout(() => {
+    msg.style.opacity = '1';
+    msg.textContent   = '';
+    typing = setInterval(() => {
+      msg.textContent = text.substring(0, ++i);
+      if (i >= text.length) { clearInterval(typing); if (!msg.matches(':hover')) fade = setTimeout(() => finish(), 5000); }
+    }, 45);
+  }, 150);
+}
+
 function resetIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
@@ -3884,6 +3926,33 @@ function readableAgainst(bg, color, target) {
 const cursorColor = (bg, accent) => readableAgainst(bg, accent, CURSOR_SEEN);
 const linkColor   = (bg, accent) => readableAgainst(bg, accent, LINK_READABLE);
 
+// A custom theme's accent that's hard to see against its background (under ACCENT_SEEN) is lightened, or darkened on
+// a light background, until it reads as text (LINK_READABLE), once the color is picked: on closing the picker or
+// leaving the hex field, never mid-drag. The status line says so, and a click puts the chosen color back. That
+// pairing is then left alone. The Obsidian plugin does the same.
+const ACCENT_SEEN = 3;
+const keptAccents = {};   // slot key -> 'bg|accent' the writer chose to keep
+function setCustomAccent(slot, color) {
+  document.getElementById('color-accent' + slot.sfx).value = color;
+  document.getElementById('hex-accent'   + slot.sfx).value = color;
+  applyCustomColors(); saveSettings();
+}
+function checkCustomAccent(slot) {
+  if (customSlot(document.getElementById('theme-select').value) !== slot) return;
+  const bg     = document.getElementById('color-bg'     + slot.sfx).value;
+  const accent = document.getElementById('color-accent' + slot.sfx).value;
+  if (keptAccents[slot.key] === bg + '|' + accent) return;
+  if (contrast(hexToRgb(accent), hexToRgb(bg)) >= ACCENT_SEEN) return;
+  const bumped = linkColor(bg, accent);
+  const word   = luminance(hexToRgb(bumped)) > luminance(hexToRgb(accent)) ? 'lightened' : 'darkened';
+  setCustomAccent(slot, bumped);
+  typeActionMessage('accent ' + word + ' to stay readable. (click to undo)', () => {
+    keptAccents[slot.key] = bg + '|' + accent;
+    setCustomAccent(slot, accent);
+    return 'accent restored.';
+  });
+}
+
 function applyCustomColors() {
   const slot = customSlot(document.getElementById('theme-select').value);
   if (!slot) return;
@@ -4039,6 +4108,10 @@ CUSTOM_SLOTS.forEach(slot => {
     hex.addEventListener('input', () => {
       if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { picker.value = hex.value; applyCustomColors(); saveSettings(); }
     });
+    if (key !== 'text') {
+      picker.addEventListener('change', () => checkCustomAccent(slot));
+      hex.addEventListener('change',    () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) checkCustomAccent(slot); });
+    }
   });
   document.getElementById('custom-name'   + slot.sfx).addEventListener('input',  () => { syncCustomNames(); saveSettings(); });
   document.getElementById('custom-cursor' + slot.sfx).addEventListener('change', () => { applyCustomColors(); saveSettings(); });
