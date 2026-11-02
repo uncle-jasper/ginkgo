@@ -365,8 +365,8 @@
   @keyframes cm-blink  { 0%, 40% { opacity: 1; animation-timing-function: linear; } 50% { opacity: 0; } 90% { opacity: 0; animation-timing-function: linear; } 100% { opacity: 1; } }
   @keyframes cm-blink2 { 0%, 40% { opacity: 1; animation-timing-function: linear; } 50% { opacity: 0; } 90% { opacity: 0; animation-timing-function: linear; } 100% { opacity: 1; } }
   .cm-cursor, .cm-dropCursor { border-left-color: var(--cursor, var(--accent)) !important; border-left-width: 2.5px !important; transform: scaleY(1.2); transform-origin: center center; }
-  .cm-selectionBackground { background: var(--accent) !important; opacity: 0.25; }
-  .cm-focused .cm-selectionBackground { background: var(--accent) !important; opacity: 0.25; }
+  .cm-selectionBackground { background: var(--link, var(--accent)) !important; opacity: 0.25; }
+  .cm-focused .cm-selectionBackground { background: var(--link, var(--accent)) !important; opacity: 0.25; }
   .cm-gutters { display: none !important; }
   .cm-activeLine { background-color: transparent !important; }
   /* Suppress all CM6 default syntax colours — our own plugins handle decoration */
@@ -462,7 +462,7 @@
   #preview pre { background: var(--surface); padding: 14px 18px; border-radius: 6px; overflow-x: auto; margin: 0.8em 0; }
   #preview pre code { background: none; padding: 0; }
   #preview hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
-  #preview a { color: var(--accent); }
+  #preview a { color: var(--link, var(--accent)); }
   #preview strong { font-weight: 700; -webkit-text-stroke: 0.4px currentColor; }
   #preview em { font-style: italic; }
   #preview del { opacity: 0.5; text-decoration: line-through; }
@@ -916,7 +916,7 @@
   }
   .cm-search .cm-button:hover { color: var(--text) !important; background: var(--border) !important; }
   .cm-search br { display: none !important; }
-  .cm-searchMatch { background: var(--accent) !important; opacity: 0.35; border-radius: 2px; }
+  .cm-searchMatch { background: var(--link, var(--accent)) !important; opacity: 0.35; border-radius: 2px; }
   .cm-searchMatch.cm-searchMatch-selected { opacity: 0.65 !important; }
 
   /* ── Syntax dimming ── */
@@ -1171,7 +1171,7 @@
   .footnotes { margin-top: 2em; border-top: 1px solid var(--border); padding-top: 1em; font-size: 0.88em; opacity: 0.75; }
   .footnotes ol { padding-left: 1.5em; }
   .footnotes li { margin-bottom: 0.3em; }
-  .footnote-ref { font-size: 0.8em; vertical-align: super; text-decoration: none; color: var(--accent); }
+  .footnote-ref { font-size: 0.8em; vertical-align: super; text-decoration: none; color: var(--link, var(--accent)); }
   .footnote-backref { text-decoration: none; opacity: 0.5; }
   .footnote-backref:hover { opacity: 1; }
 
@@ -3021,8 +3021,8 @@ function buildExtensions() {
       '.cm-scroller': { overflow: 'visible' },
       '.cm-gutters': { display: 'none' },
       '.cm-activeLineGutter': { display: 'none' },
-      '.cm-selectionBackground': { background: 'var(--accent) !important', opacity: '0.25' },
-      '&.cm-focused .cm-selectionBackground': { background: 'var(--accent) !important', opacity: '0.25' },
+      '.cm-selectionBackground': { background: 'var(--link, var(--accent)) !important', opacity: '0.25' },
+      '&.cm-focused .cm-selectionBackground': { background: 'var(--link, var(--accent)) !important', opacity: '0.25' },
       '.cm-line span': { textDecoration: 'none' },
       '.cm-line span.cm-tree-strike': { textDecoration: 'line-through' },
       '.cm-tree-h1': { fontWeight: '700', WebkitTextStroke: '0.4px currentColor' },
@@ -3863,24 +3863,26 @@ function blockStrength(bg, text, accent) {
   return pct;
 }
 
-// The cursor is drawn in the accent. An accent close to the background leaves a line or underline cursor invisible,
-// so a custom theme's cursor is the accent nudged toward white or black (whichever pulls away from the background
-// faster) until it reaches CURSOR_SEEN, WCAG's 3:1 for things that aren't text. Accents that already stand out are
-// left as they are, so the hue holds. Tree and the Obsidian plugin do the same.
-const CURSOR_SEEN = 3;
-function cursorColor(bg, accent) {
-  const b = hexToRgb(bg), a = hexToRgb(accent);
-  if (contrast(a, b) >= CURSOR_SEEN) return accent;
+// An accent close to the background can't be seen. A custom theme's cursor and links fall back on the accent nudged
+// toward white or black (whichever pulls away from the background faster), just until it stands out: CURSOR_SEEN is
+// WCAG's 3:1 for things that aren't text, LINK_READABLE its 4.5:1 for text. Accents that already stand out are left
+// as they are, so the hue holds. Tree and the Obsidian plugin do the same.
+const CURSOR_SEEN = 3, LINK_READABLE = 4.5;
+function readableAgainst(bg, color, target) {
+  const b = hexToRgb(bg), a = hexToRgb(color);
+  if (contrast(a, b) >= target) return color;
   const toward = (end, pct) => a.map((v, i) => v + (end[i] - v) * pct / 100);
   let best = null;
   for (const end of [[255,255,255], [0,0,0]]) {
     for (let pct = 1; pct <= 100; pct++) {
-      if (contrast(toward(end, pct), b) >= CURSOR_SEEN) { if (!best || pct < best.pct) best = { end, pct }; break; }
+      if (contrast(toward(end, pct), b) >= target) { if (!best || pct < best.pct) best = { end, pct }; break; }
     }
   }
   if (!best) best = { end: luminance(b) > 0.18 ? [0,0,0] : [255,255,255], pct: 100 };
   return rgbToHex(...toward(best.end, best.pct));
 }
+const cursorColor = (bg, accent) => readableAgainst(bg, accent, CURSOR_SEEN);
+const linkColor   = (bg, accent) => readableAgainst(bg, accent, LINK_READABLE);
 
 function applyCustomColors() {
   const slot = customSlot(document.getElementById('theme-select').value);
@@ -3897,6 +3899,7 @@ function applyCustomColors() {
   document.documentElement.style.setProperty('--border', blendHex(text,bg,0.15));
   const cursorC = cursorColor(bg, accent);
   document.documentElement.style.setProperty('--cursor', cursorC);
+  document.documentElement.style.setProperty('--link',   linkColor(bg, accent));
   document.documentElement.style.setProperty('--block-strength', blockStrength(bg, text, cursorC) + '%');
   const cursor = document.getElementById('custom-cursor' + sfx).value;
   document.body.classList.toggle('cursor-block',     cursor === 'block');
@@ -3904,7 +3907,7 @@ function applyCustomColors() {
 }
 
 function clearCustomColors() {
-  ['--bg','--surface','--text','--accent','--muted','--border','--cursor','--block-strength'].forEach(v =>
+  ['--bg','--surface','--text','--accent','--muted','--border','--cursor','--link','--block-strength'].forEach(v =>
     document.documentElement.style.removeProperty(v)
   );
   document.body.classList.remove('cursor-block', 'cursor-underline');
