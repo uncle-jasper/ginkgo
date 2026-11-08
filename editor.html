@@ -1180,7 +1180,7 @@
   /* ── Print / PDF export ── */
   @media print {
     #header, #statusbar, #sidebar, #sidebar-toggle, #split-divider, #editor-scroll, #word-menu, #annotation-popup, #image-hover-popup,
-    #settings-overlay, #about-overlay, #keys-overlay, #wp-confirm-overlay,
+    #settings-overlay, #about-overlay, #keys-overlay, #wp-confirm-overlay, #readable-overlay,
     #goal-prompt-overlay, .split-dropdown { display: none !important; }
     html, body { height: auto !important; overflow: visible !important; background: #fff; }
     #main { display: block !important; height: auto !important; overflow: visible !important; }
@@ -1428,13 +1428,13 @@
   #btn-keys:hover { opacity: 0.65; }
 
   /* ── WP confirm dialog ── */
-  #wp-confirm-overlay {
+  #wp-confirm-overlay, #readable-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.45);
     z-index: 2000;
     display: flex; align-items: center; justify-content: center;
   }
-  #wp-confirm-modal {
+  #wp-confirm-modal, #readable-modal {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -1446,12 +1446,17 @@
     text-align: center;
     box-shadow: 0 8px 40px rgba(0,0,0,0.4);
   }
-  #wp-confirm-modal p { font-size: 12px; margin-bottom: 20px; color: var(--text); opacity: 0.85; line-height: 1.6; }
-  #wp-confirm-btns { display: flex; gap: 10px; justify-content: center; }
-  #wp-confirm-btns button { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 6px 18px; border-radius: 5px; cursor: pointer; border: 1px solid var(--border); background: var(--bg); color: var(--text); opacity: 0.7; }
-  #wp-confirm-btns button:hover { opacity: 1; }
-  #wp-confirm-yes { border-color: var(--accent) !important; color: var(--accent) !important; opacity: 0.8 !important; }
-  #wp-confirm-yes:hover { opacity: 1 !important; }
+  #wp-confirm-modal p, #readable-modal p { font-size: 12px; margin-bottom: 20px; color: var(--text); opacity: 0.85; line-height: 1.6; }
+  #wp-confirm-btns, #readable-btns { display: flex; gap: 10px; justify-content: center; }
+  #wp-confirm-btns button, #readable-btns button { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 6px 18px; border-radius: 5px; cursor: pointer; border: 1px solid var(--border); background: var(--bg); color: var(--text); opacity: 0.7; }
+  #wp-confirm-btns button:hover, #readable-btns button:hover { opacity: 1; }
+  #wp-confirm-yes, #readable-yes { border-color: var(--accent) !important; color: var(--accent) !important; opacity: 0.8 !important; }
+  #wp-confirm-yes:hover, #readable-yes:hover { opacity: 1 !important; }
+  #readable-overlay { z-index: 2001; }   /* over settings, where a color is picked */
+
+  /* ── A custom theme's readable box: the accent, and what links and the cursor show instead ── */
+  .readable-note { display: inline-flex; align-items: center; gap: 2px; margin-left: 2px; font-size: 10px; white-space: nowrap; opacity: 0.8; }
+  .readable-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--border); }
 
 </style>
 </head>
@@ -1552,6 +1557,11 @@
             <option value="underline">underline</option>
           </select>
         </div>
+        <div class="color-pair" style="margin-bottom:8px;">
+          <span>readable</span>
+          <input type="checkbox" id="custom-readable" checked title="Adjust colors too faint to read. Off shows your colors exactly.">
+          <span class="readable-note" id="custom-readable-note"></span>
+        </div>
         <div class="color-pair">
           <button id="custom-export" title="Save this theme as a file">export</button>
           <button id="custom-import" title="Load a theme file into this slot">import</button>
@@ -1585,6 +1595,11 @@
             <option value="underline">underline</option>
           </select>
         </div>
+        <div class="color-pair" style="margin-bottom:8px;">
+          <span>readable</span>
+          <input type="checkbox" id="custom-readable-2" checked title="Adjust colors too faint to read. Off shows your colors exactly.">
+          <span class="readable-note" id="custom-readable-note-2"></span>
+        </div>
         <div class="color-pair">
           <button id="custom-export-2" title="Save this theme as a file">export</button>
           <button id="custom-import-2" title="Load a theme file into this slot">import</button>
@@ -1617,6 +1632,11 @@
             <option value="block">block</option>
             <option value="underline">underline</option>
           </select>
+        </div>
+        <div class="color-pair" style="margin-bottom:8px;">
+          <span>readable</span>
+          <input type="checkbox" id="custom-readable-3" checked title="Adjust colors too faint to read. Off shows your colors exactly.">
+          <span class="readable-note" id="custom-readable-note-3"></span>
         </div>
         <div class="color-pair">
           <button id="custom-export-3" title="Save this theme as a file">export</button>
@@ -1882,6 +1902,16 @@
       </div>
     </div>
     <div class="keys-footer">Esc or click outside to close · Ctrl+/ to reopen</div>
+  </div>
+</div>
+
+<div id="readable-overlay" style="display:none">
+  <div id="readable-modal">
+    <p>Adjust theme colors for readability?</p>
+    <div id="readable-btns">
+      <button id="readable-yes">yes</button>
+      <button id="readable-no">ignore</button>
+    </div>
   </div>
 </div>
 
@@ -3926,31 +3956,55 @@ function readableAgainst(bg, color, target) {
 const cursorColor = (bg, accent) => readableAgainst(bg, accent, CURSOR_SEEN);
 const linkColor   = (bg, accent) => readableAgainst(bg, accent, LINK_READABLE);
 
-// A custom theme's accent that's hard to see against its background (under ACCENT_SEEN) is lightened, or darkened on
-// a light background, until it reads as text (LINK_READABLE), once the color is picked: on closing the picker or
-// leaving the hex field, never mid-drag. The status line says so, and a click puts the chosen color back. That
-// pairing is then left alone. The Obsidian plugin does the same.
+// Readable colors: a custom theme whose accent is too faint to read as a link (under LINK_READABLE) asks once whether
+// to adjust it. The colors picked are always what's saved; adjusting is only in what's shown, so the theme's readable
+// box switches it either way. On: links and the cursor use the nudged colors above, and an accent under ACCENT_SEEN is
+// shown as the link color. Off: the accent, links and cursor are exactly the accent. Tree and the Obsidian plugin
+// do the same.
 const ACCENT_SEEN = 3;
-const keptAccents = {};   // slot key -> 'bg|accent' the writer chose to keep
-function setCustomAccent(slot, color) {
-  document.getElementById('color-accent' + slot.sfx).value = color;
-  document.getElementById('hex-accent'   + slot.sfx).value = color;
-  applyCustomColors(); saveSettings();
+const readableChoice  = {};   // slot key -> true / false once answered; unset until then
+const readableSkipped = {};   // closed without an answer: asked again next launch
+const needsReadable = (bg, accent) => contrast(hexToRgb(accent), hexToRgb(bg)) < LINK_READABLE;
+function shownColors(bg, accent, readable) {
+  if (readable === false) return { accent, cursor: accent, link: accent };
+  const link = linkColor(bg, accent);
+  return { accent: readable && contrast(hexToRgb(accent), hexToRgb(bg)) < ACCENT_SEEN ? link : accent, cursor: cursorColor(bg, accent), link };
 }
-function checkCustomAccent(slot) {
-  if (customSlot(document.getElementById('theme-select').value) !== slot) return;
+// The box, and beside it what On does when it would change something: your accent, then what links and the cursor show
+function syncReadable(slot) {
   const bg     = document.getElementById('color-bg'     + slot.sfx).value;
   const accent = document.getElementById('color-accent' + slot.sfx).value;
-  if (keptAccents[slot.key] === bg + '|' + accent) return;
-  if (contrast(hexToRgb(accent), hexToRgb(bg)) >= ACCENT_SEEN) return;
-  const bumped = linkColor(bg, accent);
-  const word   = luminance(hexToRgb(bumped)) > luminance(hexToRgb(accent)) ? 'lightened' : 'darkened';
-  setCustomAccent(slot, bumped);
-  typeActionMessage('accent ' + word + ' to stay readable. (click to undo)', () => {
-    keptAccents[slot.key] = bg + '|' + accent;
-    setCustomAccent(slot, accent);
-    return 'accent restored.';
-  });
+  document.getElementById('custom-readable' + slot.sfx).checked = readableChoice[slot.key] !== false;
+  const note = document.getElementById('custom-readable-note' + slot.sfx);
+  note.textContent = '';
+  if (!needsReadable(bg, accent)) return;
+  const swatch = color => {
+    const dot = document.createElement('span');
+    dot.className = 'readable-swatch';
+    dot.style.background = color;
+    note.append(dot, color);
+  };
+  swatch(accent); note.append(' → '); swatch(linkColor(bg, accent));
+}
+function askReadable() {
+  const slot = customSlot(document.getElementById('theme-select').value);
+  const overlay = document.getElementById('readable-overlay');
+  if (!slot || justWriteActive || overlay.style.display === 'flex') return;
+  if (readableChoice[slot.key] !== undefined || readableSkipped[slot.key]) return;
+  if (!needsReadable(document.getElementById('color-bg' + slot.sfx).value, document.getElementById('color-accent' + slot.sfx).value)) return;
+  overlay.dataset.slot = slot.key;
+  overlay.style.display = 'flex';
+}
+function answerReadable(readable) {
+  const overlay = document.getElementById('readable-overlay');
+  if (overlay.style.display !== 'flex') return;
+  overlay.style.display = 'none';
+  const slot = customSlot(overlay.dataset.slot);
+  if (readable === undefined) { readableSkipped[slot.key] = true; return; }
+  readableChoice[slot.key] = readable;
+  syncReadable(slot);
+  applyCustomColors();
+  saveSettings();
 }
 
 function applyCustomColors() {
@@ -3963,13 +4017,13 @@ function applyCustomColors() {
   document.documentElement.style.setProperty('--bg',     bg);
   document.documentElement.style.setProperty('--surface',adjustHex(bg,-10));
   document.documentElement.style.setProperty('--text',   text);
-  document.documentElement.style.setProperty('--accent', accent);
+  const shown  = shownColors(bg, accent, readableChoice[slot.key]);
+  document.documentElement.style.setProperty('--accent', shown.accent);
   document.documentElement.style.setProperty('--muted',  blendHex(text,bg,0.5));
   document.documentElement.style.setProperty('--border', blendHex(text,bg,0.15));
-  const cursorC = cursorColor(bg, accent);
-  document.documentElement.style.setProperty('--cursor', cursorC);
-  document.documentElement.style.setProperty('--link',   linkColor(bg, accent));
-  document.documentElement.style.setProperty('--block-strength', blockStrength(bg, text, cursorC) + '%');
+  document.documentElement.style.setProperty('--cursor', shown.cursor);
+  document.documentElement.style.setProperty('--link',   shown.link);
+  document.documentElement.style.setProperty('--block-strength', blockStrength(bg, text, shown.cursor) + '%');
   const cursor = document.getElementById('custom-cursor' + sfx).value;
   document.body.classList.toggle('cursor-block',     cursor === 'block');
   document.body.classList.toggle('cursor-underline', cursor === 'underline');
@@ -3997,7 +4051,8 @@ function syncCustomNames() {
 function exportCustomTheme(slot) {
   const v     = id => document.getElementById(id + slot.sfx).value;
   const name  = v('custom-name').trim();
-  const theme = { treeTheme: 1, name, bg: v('color-bg'), text: v('color-text'), accent: v('color-accent'), cursor: v('custom-cursor') };
+  const theme = { treeTheme: 1, name, bg: v('color-bg'), text: v('color-text'), accent: v('color-accent'), cursor: v('custom-cursor'),
+                  ...(typeof readableChoice[slot.key] === 'boolean' ? { readable: readableChoice[slot.key] } : {}) };
   const blob  = new Blob([JSON.stringify(theme, null, 2) + '\n'], { type: 'application/json' });
   const url   = URL.createObjectURL(blob);
   const a     = document.createElement('a');
@@ -4020,10 +4075,15 @@ function importCustomTheme(slot, file) {
     });
     document.getElementById('custom-name'   + slot.sfx).value = typeof t.name === 'string' ? t.name.trim().slice(0, 24) : '';
     document.getElementById('custom-cursor' + slot.sfx).value = CURSOR_STYLES.includes(t.cursor) ? t.cursor : 'line';
+    if (typeof t.readable === 'boolean') readableChoice[slot.key] = t.readable;
+    else delete readableChoice[slot.key];
+    delete readableSkipped[slot.key];
+    syncReadable(slot);
     syncCustomNames();
     applyCustomColors();
     saveSettings();
     typeStatusMessage('theme imported.');
+    askReadable();
   });
 }
 
@@ -4060,6 +4120,7 @@ function setTheme(val) {
   }
   syncThemeUI();
   saveSettings();
+  askReadable();
 }
 
 document.getElementById('theme-label').addEventListener('click', () => {
@@ -4104,17 +4165,20 @@ CUSTOM_SLOTS.forEach(slot => {
   ['bg','text','accent'].forEach(key => {
     const picker = document.getElementById('color-' + key + slot.sfx);
     const hex    = document.getElementById('hex-' + key + slot.sfx);
-    picker.addEventListener('input', () => { hex.value = picker.value; applyCustomColors(); saveSettings(); });
+    picker.addEventListener('input', () => { hex.value = picker.value; syncReadable(slot); applyCustomColors(); saveSettings(); });
     hex.addEventListener('input', () => {
-      if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { picker.value = hex.value; applyCustomColors(); saveSettings(); }
+      if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { picker.value = hex.value; syncReadable(slot); applyCustomColors(); saveSettings(); }
     });
     if (key !== 'text') {
-      picker.addEventListener('change', () => checkCustomAccent(slot));
-      hex.addEventListener('change',    () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) checkCustomAccent(slot); });
+      picker.addEventListener('change', () => askReadable());
+      hex.addEventListener('change',    () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) askReadable(); });
     }
   });
   document.getElementById('custom-name'   + slot.sfx).addEventListener('input',  () => { syncCustomNames(); saveSettings(); });
   document.getElementById('custom-cursor' + slot.sfx).addEventListener('change', () => { applyCustomColors(); saveSettings(); });
+  document.getElementById('custom-readable' + slot.sfx).addEventListener('change', function() {
+    readableChoice[slot.key] = this.checked; syncReadable(slot); applyCustomColors(); saveSettings();
+  });
   document.getElementById('custom-export' + slot.sfx).addEventListener('click',  () => exportCustomTheme(slot));
   document.getElementById('custom-import' + slot.sfx).addEventListener('click',  () => {
     importSlot = slot;
@@ -4130,7 +4194,7 @@ document.getElementById('custom-theme-file').addEventListener('change', function
 // Just Write locks the look, custom themes included
 function lockCustomControls(locked) {
   CUSTOM_SLOTS.forEach(slot => {
-    ['color-bg','color-text','color-accent','hex-bg','hex-text','hex-accent','custom-name','custom-cursor','custom-export','custom-import'].forEach(id => {
+    ['color-bg','color-text','color-accent','hex-bg','hex-text','hex-accent','custom-name','custom-cursor','custom-readable','custom-export','custom-import'].forEach(id => {
       const el = document.getElementById(id + slot.sfx); if (el) el.disabled = locked;
     });
   });
@@ -4164,7 +4228,8 @@ function isModalOpen() {
   return document.getElementById('settings-overlay').style.display === 'flex' ||
          document.getElementById('about-overlay').style.display === 'flex' ||
          document.getElementById('keys-overlay').style.display === 'flex' ||
-         document.getElementById('wp-confirm-overlay').style.display === 'flex';
+         document.getElementById('wp-confirm-overlay').style.display === 'flex' ||
+         document.getElementById('readable-overlay').style.display === 'flex';
 }
 
 function hideToolbar() {
@@ -4720,6 +4785,9 @@ function saveSettings() {
       customCursor:  document.getElementById('custom-cursor').value,
       custom2Cursor: document.getElementById('custom-cursor-2').value,
       custom3Cursor: document.getElementById('custom-cursor-3').value,
+      customReadable:  readableChoice.custom,
+      custom2Readable: readableChoice.custom2,
+      custom3Readable: readableChoice.custom3,
       showChars:    document.getElementById('chk-show-chars').checked,
       showLines:    document.getElementById('chk-show-lines').checked,
       showReadtime: document.getElementById('chk-show-readtime').checked,
@@ -4776,6 +4844,8 @@ function loadSettings() {
       CUSTOM_SLOTS.forEach(slot => {
         if (s[slot.key + 'Name'])   document.getElementById('custom-name'   + slot.sfx).value = s[slot.key + 'Name'];
         if (CURSOR_STYLES.includes(s[slot.key + 'Cursor'])) document.getElementById('custom-cursor' + slot.sfx).value = s[slot.key + 'Cursor'];
+        if (typeof s[slot.key + 'Readable'] === 'boolean') readableChoice[slot.key] = s[slot.key + 'Readable'];
+        syncReadable(slot);
       });
       syncCustomNames();
       if (customSlot(s.theme)) applyCustomColors();
@@ -5900,6 +5970,11 @@ document.getElementById('btn-wp-draft').addEventListener('click', () => {
   if (!content.trim()) { typeStatusMessage('nothing to send.'); return; }
   document.getElementById('wp-confirm-overlay').style.display = 'flex';
 });
+document.getElementById('readable-yes').addEventListener('click', () => answerReadable(true));
+document.getElementById('readable-no').addEventListener('click',  () => answerReadable(false));
+document.getElementById('readable-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) answerReadable(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') answerReadable(); });
+
 document.getElementById('wp-confirm-yes').addEventListener('click', () => {
   document.getElementById('wp-confirm-overlay').style.display = 'none';
   sendToWordPress();
@@ -5938,6 +6013,7 @@ function init() {
 
   // Load settings first (sets theme, font, size before editor mounts)
   loadSettings();
+  setTimeout(askReadable, 1200);   // once the page has settled
   loadWpSettings();
 
   // NOTE: Ginkgo owns persistence — the fork's own autosave-restore
