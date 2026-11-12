@@ -9,7 +9,10 @@ A template is starter text for a new entry: an intention line, a fixed set of qu
 **Using templates**
 - **＋** creates an entry from your default template, or a blank entry if you haven't set one.
 - **▾** next to ＋ lets you choose a template (or **blank**) for this one entry.
-- **☰ → insert template** adds a template to the entry you have open, at your cursor. If the cursor is in the header, it goes at the end of the entry instead.
+- **Tap a template name** under the title of an empty entry to fill it in. The row of names disappears once you start writing.
+- **Type `/`** at the start of an empty line to pick a template anywhere in an entry. Keep typing to filter (`/mor` → Morning), then tap it or press Enter. Esc dismisses it. A slash mid-sentence ("and/or") never triggers it.
+- **☰ → insert template** does the same from the menu, at your cursor. If the cursor is in the header, it goes at the end of the entry instead.
+- After inserting, the cursor lands right after the template's first label (like `**Intention:** `), ready to type.
 
 **Managing templates**
 Go to **☰ → templates** to add, edit, rename or delete templates, and to check **use for ＋ (default)** on the one ＋ should use. Uncheck it to make ＋ blank again. Templates are plain markdown, and they sync through Dropbox like your entries.

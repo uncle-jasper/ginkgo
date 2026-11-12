@@ -1067,6 +1067,28 @@
     border-radius: 3px;
   }
   .dateline-chip:hover { background: var(--border); opacity: 1; }
+  /* ── Ginkgo templates: chips on an empty entry, and the "/" picker ── */
+  .template-chips {
+    display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    font-size: 0.78em; color: var(--muted); opacity: 0.75; user-select: none;
+  }
+  .template-chips:hover { opacity: 1; }
+  .template-chip {
+    font: inherit; color: var(--muted); background: transparent;
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 1px 9px; cursor: pointer; line-height: 1.6;
+  }
+  .template-chip:hover { color: var(--text); background: var(--border); }
+  #slash-menu {
+    position: fixed; z-index: 60; display: none;
+    min-width: 160px; max-width: 260px; max-height: 220px; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    font-family: var(--ui-font, inherit); font-size: 12px;
+  }
+  .slash-menu-label { padding: 3px 12px 4px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .slash-menu-item { padding: 6px 12px; cursor: pointer; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slash-menu-item.selected, .slash-menu-item:hover { background: var(--border); }
   .cm-dateline-expanded { background: rgba(200,160,0,0.12); border-radius: 3px; outline: 1px dashed var(--border); }
   /* Mood + reason line beneath the dateline — same muted look as the chip,
      but left as plain editable text (see MOOD_LINE_RE) rather than a
@@ -2433,6 +2455,176 @@ const datelinePlugin = ViewPlugin.fromClass(class {
   provide: plugin => EditorView.atomicRanges.of(view => view.plugin(plugin)?.atomic ?? Decoration.none),
 });
 
+// ── Ginkgo templates ────────────────────────────────────────────────
+// Ginkgo owns the templates (and renders their placeholders); this editor
+// only knows their names, sent via SET_TEMPLATES. Picking one — from the
+// chips on an empty entry or the "/" menu — asks Ginkgo for the rendered
+// text (PICK_TEMPLATE), which comes back as INSERT_TEMPLATE.
+let ginkgoTemplates = [];        // [{ id, name }]
+let ginkgoTemplatesVersion = 0;
+
+// End of the entry's header: optional photo(s), the dateline, the mood
+// line and the "## " title line. 0 if there's no dateline.
+function ginkgoHeaderEnd(doc) {
+  const lines = doc.split('\n');
+  let i = 0, pos = 0, headerEnd = 0;
+  const step = () => { pos += lines[i].length + 1; i++; };
+  while (i < lines.length && (lines[i].trim() === '' || /^(!\[[^\]]*\]\([^)]*\)\s*)+$/.test(lines[i].trim()))) step();
+  if (i < lines.length && /^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}\s+(AM|PM)/.test(lines[i].trim())) {
+    step(); headerEnd = pos;
+    if (i < lines.length && /^mood: /.test(lines[i].trim())) { step(); headerEnd = pos; }
+    while (i < lines.length && lines[i].trim() === '') step();
+    if (i < lines.length && /^#{1,2}(\s|$)/.test(lines[i])) { step(); headerEnd = pos; }
+  }
+  return Math.min(headerEnd, doc.length);
+}
+
+function requestTemplate(id, replace) {
+  if (!window.parent || window.parent === window) return;
+  window.parent.postMessage({ type: 'PICK_TEMPLATE', id, replace: replace || null }, location.origin);
+}
+
+// Chips: shown on the blank line under the title while the entry has
+// nothing but its header. Gone the moment anything is written.
+class TemplateChipsWidget extends WidgetType {
+  constructor(key) { super(); this.key = key; }
+  eq(other) { return other.key === this.key; }
+  toDOM() {
+    const wrap = document.createElement('span');
+    wrap.className = 'template-chips';
+    wrap.setAttribute('contenteditable', 'false');
+    for (const t of ginkgoTemplates) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'template-chip';
+      b.textContent = t.name;
+      b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); requestTemplate(t.id); });
+      wrap.appendChild(b);
+    }
+    return wrap;
+  }
+  ignoreEvent() { return true; }
+}
+
+const templateChipsPlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this.version = ginkgoTemplatesVersion; this.decorations = this._build(view); }
+  update(u) {
+    if (u.docChanged || this.version !== ginkgoTemplatesVersion ||
+        u.state.facet(EditorState.readOnly) !== u.startState.facet(EditorState.readOnly)) {
+      this.version = ginkgoTemplatesVersion;
+      this.decorations = this._build(u.view);
+    }
+  }
+  _build(view) {
+    if (!ginkgoTemplates.length || view.state.readOnly) return Decoration.none;
+    const doc = view.state.doc.toString();
+    const headerEnd = ginkgoHeaderEnd(doc);
+    if (!headerEnd || doc.slice(headerEnd).trim() !== '') return Decoration.none;
+    // The first empty line after the title — or the end of the title line
+    // itself if the document stops there.
+    const pos = headerEnd < doc.length ? view.state.doc.lineAt(headerEnd).from : doc.length;
+    const atLineEnd = pos === doc.length && !doc.endsWith('\n');
+    const key = ginkgoTemplates.map(t => t.id + ':' + t.name).join('|') + (atLineEnd ? '|e' : '');
+    const deco = Decoration.widget({ widget: new TemplateChipsWidget(key), side: 1, block: false });
+    return Decoration.set([deco.range(pos)]);
+  }
+}, { decorations: v => v.decorations });
+
+// "/" picker: type "/" at the start of an empty line in the body; keep
+// typing to filter by name; ↑↓ + Enter/Tab, or tap. Esc dismisses it for
+// that line. Never offered inside the header.
+let slashState = null;          // { from, to, query, items, index }
+let slashDismissedLine = -1;
+function slashMenuEl() {
+  let el = document.getElementById('slash-menu');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'slash-menu';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function hideSlashMenu() {
+  slashState = null;
+  const el = document.getElementById('slash-menu');
+  if (el) el.style.display = 'none';
+}
+function updateSlashMenu() {
+  if (!view || !ginkgoTemplates.length || view.state.readOnly || currentMode === 'preview') { hideSlashMenu(); return; }
+  const sel = view.state.selection.main;
+  if (!sel.empty) { hideSlashMenu(); return; }
+  const line = view.state.doc.lineAt(sel.head);
+  const before = line.text.slice(0, sel.head - line.from);
+  const after = line.text.slice(sel.head - line.from);
+  const m = before.match(/^\s*\/([^\s/]*)$/);
+  if (!m || after.trim() !== '') { slashDismissedLine = -1; hideSlashMenu(); return; }
+  if (slashDismissedLine === line.from) { hideSlashMenu(); return; }
+  const doc = view.state.doc.toString();
+  if (line.from < ginkgoHeaderEnd(doc)) { hideSlashMenu(); return; }
+  const q = m[1].toLowerCase();
+  const items = ginkgoTemplates
+    .filter(t => t.name.toLowerCase().includes(q))
+    .sort((a, b) => (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0));
+  if (!items.length) { hideSlashMenu(); return; }
+  const prevIndex = slashState && slashState.from === line.from ? slashState.index : 0;
+  slashState = { from: line.from, to: sel.head, text: before, items, index: Math.min(prevIndex, items.length - 1) };
+  renderSlashMenu();
+}
+function renderSlashMenu() {
+  const el = slashMenuEl();
+  el.innerHTML = '';
+  const label = document.createElement('div');
+  label.className = 'slash-menu-label';
+  label.textContent = 'template';
+  el.appendChild(label);
+  slashState.items.forEach((t, i) => {
+    const item = document.createElement('div');
+    item.className = 'slash-menu-item' + (i === slashState.index ? ' selected' : '');
+    item.textContent = t.name;
+    item.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+    item.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); slashState.index = i; pickSlashItem(); });
+    el.appendChild(item);
+  });
+  el.style.display = 'block';
+  const coords = view.coordsAtPos(slashState.to);
+  if (!coords) { el.style.display = 'none'; return; }
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = Math.min(coords.left, window.innerWidth - w - 8);
+  let top = coords.bottom + 4;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, coords.top - h - 4);
+  el.style.left = Math.max(8, left) + 'px';
+  el.style.top = top + 'px';
+  const sel = el.querySelector('.slash-menu-item.selected');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+function pickSlashItem() {
+  if (!slashState) return;
+  const t = slashState.items[slashState.index];
+  const replace = { from: slashState.from, to: slashState.to, expect: slashState.text };
+  hideSlashMenu();
+  requestTemplate(t.id, replace);
+}
+function onSlashKeydown(e) {
+  if (!slashState) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const n = slashState.items.length;
+    slashState.index = (slashState.index + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+    renderSlashMenu();
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    pickSlashItem();
+  } else if (e.key === 'Escape') {
+    slashDismissedLine = slashState.from;
+    hideSlashMenu();
+  } else {
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+}
+window.addEventListener('resize', () => { if (slashState) renderSlashMenu(); });
+window.addEventListener('scroll', () => { if (slashState) renderSlashMenu(); }, true);
+
 function insertAnnotation() {
   if (!view) return;
   const { state } = view;
@@ -2879,6 +3071,7 @@ function buildExtensions() {
     imagePlugin,
     datelineExpandedField,
     datelinePlugin,
+    templateChipsPlugin,
     zenModePlugin,
     shapeCursorPlugin,
     inlineFormattingPlugin,
@@ -3143,6 +3336,9 @@ function initEditor(initialContent) {
     state,
     parent: document.getElementById('editor-cm'),
   });
+  // Capture phase on the editor's outer element, so the "/" picker sees
+  // arrow/Enter/Tab/Esc before CodeMirror's own keymaps act on them.
+  view.dom.addEventListener('keydown', onSlashKeydown, true);
 }
 
 function getContent() {
@@ -3233,6 +3429,9 @@ function onEditorUpdate(update) {
     syncTabName();
     if (!typewriterMode) ensureCursorPadding();
     scheduleEmbedSave();
+  }
+  if (update.docChanged || update.selectionSet || update.focusChanged) {
+    if (update.focusChanged && !update.view.hasFocus) hideSlashMenu(); else updateSlashMenu();
   }
   if (update.docChanged || update.selectionSet) {
     updateStats();
@@ -6170,36 +6369,50 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'INSERT_AT_CURSOR' && view) {
     view.dispatch(view.state.replaceSelection(msg.text || ''));
     view.focus();
+  } else if (msg.type === 'SET_TEMPLATES') {
+    ginkgoTemplates = Array.isArray(msg.templates) ? msg.templates : [];
+    ginkgoTemplatesVersion++;
+    if (view) { view.dispatch({}); updateSlashMenu(); }
   } else if (msg.type === 'INSERT_TEMPLATE' && view) {
-    // Like INSERT_AT_CURSOR, but never lands inside the entry's header
-    // (photo/dateline/mood line/"## " title): if the cursor is up there, the
-    // template goes at the end of the entry instead. Always starts on its
-    // own line.
+    // From "/": replace the "/query" just typed (if it's still there) with
+    // the template. Otherwise like INSERT_AT_CURSOR, but never inside the
+    // entry's header (photo/dateline/mood line/"## " title): if the cursor
+    // is up there, the template goes at the end of the entry and the cursor
+    // stays put (so a fresh entry's title can still be typed first).
     const doc = view.state.doc.toString();
-    const lines = doc.split('\n');
-    let i = 0, pos = 0, headerEnd = 0;
-    const step = () => { pos += lines[i].length + 1; i++; };
-    while (i < lines.length && (lines[i].trim() === '' || /^(!\[[^\]]*\]\([^)]*\)\s*)+$/.test(lines[i].trim()))) step();
-    if (i < lines.length && /^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}\s+(AM|PM)/.test(lines[i].trim())) {
-      step(); headerEnd = pos;
-      if (i < lines.length && /^mood: /.test(lines[i].trim())) { step(); headerEnd = pos; }
-      while (i < lines.length && lines[i].trim() === '') step();
-      if (i < lines.length && /^#{1,2}(\s|$)/.test(lines[i])) { step(); headerEnd = pos; }
+    const body = msg.text || '';
+    const r = msg.replace;
+    let from, to, prefix = '', keepCursor = false;
+    if (r && view.state.sliceDoc(r.from, r.to) === r.expect) {
+      from = r.from; to = r.to;
+    } else {
+      const headerEnd = ginkgoHeaderEnd(doc);
+      const sel = view.state.selection.main;
+      from = sel.from; to = sel.to;
+      if (from < headerEnd) { from = to = doc.length; keepCursor = true; }
+      const before = doc.slice(0, from);
+      if (from === doc.length && before.trim()) {
+        // Appending: leave a blank line between what's there and the template.
+        prefix = before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+      } else if (before && !before.endsWith('\n')) {
+        prefix = '\n';
+      }
     }
-    headerEnd = Math.min(headerEnd, doc.length);
-    const sel = view.state.selection.main;
-    let from = sel.from, to = sel.to;
-    if (from < headerEnd) { from = to = doc.length; }
-    const before = doc.slice(0, from);
-    let prefix = '';
-    if (from === doc.length && before.trim()) {
-      // Appending: leave a blank line between what's there and the template.
-      prefix = before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
-    } else if (before && !before.endsWith('\n')) {
-      prefix = '\n';
+    const text = prefix + body;
+    // Cursor lands right after the template's first label (a line ending in
+    // ":", like "**Intention:** "), ready to type — or, if there's no such
+    // line, at the end of the template.
+    let anchor = from + text.length;
+    let lineStart = prefix.length;
+    while (lineStart < text.length) {
+      let lineEnd = text.indexOf('\n', lineStart);
+      if (lineEnd === -1) lineEnd = text.length;
+      if (/:(\*\*|__|\*|_)?\s*$/.test(text.slice(lineStart, lineEnd))) { anchor = from + lineEnd; break; }
+      lineStart = lineEnd + 1;
     }
-    const text = prefix + (msg.text || '');
-    view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
+    const tr = { changes: { from, to, insert: text } };
+    if (!keepCursor) tr.selection = { anchor };
+    view.dispatch(tr);
     view.focus();
   } else if (msg.type === 'INSERT_PHOTO' && view) {
     // The first photo in an entry goes above the dateline, matching where

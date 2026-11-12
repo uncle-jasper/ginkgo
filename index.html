@@ -711,7 +711,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.6.0</div>
+    <div id="about-version">version 1.7.0</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <a id="about-coffee-link" href="https://buymeacoffee.com/dandanmian" target="_blank" rel="noopener noreferrer">buy me a coffee</a>
     <button id="btn-about-close">Close</button>
@@ -725,7 +725,8 @@
       <div class="privacy-section">
         <div class="privacy-section-desc">
           Starter text for new entries. The date, location, mood and title still fill in above it.<br><br>
-          <b>＋</b> uses your default · <b>▾</b> picks one · <b>☰ → insert template</b> adds one to the open entry.<br><br>
+          <b>＋</b> uses your default · <b>▾</b> picks one for a new entry.<br>
+          In an empty entry, tap a template name under the title. Anywhere else, type <b>/</b> at the start of an empty line and pick one (or use <b>☰ → insert template</b>).<br><br>
           <code>{{weekday}}</code> → Thursday<br>
           <code>{{date}}</code> → November 12, 2026<br>
           <code>{{prompt}}</code> → a random question from your prompt list<br><br>
@@ -3857,6 +3858,17 @@ async function loadTemplatesRecord() {
 function setTemplatesCache(data) {
   templatesCache = normalizeTemplatesData(data);
   rebuildTemplateScaffold();
+  sendTemplatesToEditor();
+}
+
+// The editor only needs names, for its chips and "/" picker — Ginkgo
+// renders the actual text when one is picked (PICK_TEMPLATE below).
+function sendTemplatesToEditor() {
+  if (!templatesCache || !editorFrame || !editorFrame.contentWindow) return;
+  editorFrame.contentWindow.postMessage({
+    type: 'SET_TEMPLATES',
+    templates: templatesCache.templates.map(t => ({ id: t.id, name: t.name })),
+  }, location.origin);
 }
 
 async function getTemplatesData() {
@@ -4084,7 +4096,7 @@ document.getElementById('more-insert-template').addEventListener('click', async 
   menu.style.display = 'block';
 });
 
-async function insertTemplateIntoCurrentEntry(tpl) {
+async function insertTemplateIntoCurrentEntry(tpl, replace) {
   if (!tpl) { if (tpl === undefined) openTemplatesPanel(); return; }
   if (!currentEntryId || !editorFrame.contentWindow) return;
   // Placeholders follow the entry's own date, so inserting into an older
@@ -4094,16 +4106,23 @@ async function insertTemplateIntoCurrentEntry(tpl) {
   // INSERT_TEMPLATE (not INSERT_AT_CURSOR): the editor moves the insertion
   // below the dateline/mood/title header if the cursor is up there.
   editorFrame.contentWindow.postMessage({ type: 'SET_MODE', mode: 'write' }, location.origin);
-  editorFrame.contentWindow.postMessage({ type: 'INSERT_TEMPLATE', text: renderTemplateBody(tpl.body, date) }, location.origin);
+  editorFrame.contentWindow.postMessage({ type: 'INSERT_TEMPLATE', text: renderTemplateBody(tpl.body, date), replace: replace || null }, location.origin);
 }
 
 document.getElementById('btn-more-menu').addEventListener('click', closeTemplateMenus);
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#new-entry-wrap') && !e.target.closest('#more-menu-wrap')) closeTemplateMenus();
 });
-window.addEventListener('message', (e) => {
-  if (e.origin === location.origin && e.data && e.data.type === 'EDITOR_CLICKED') closeTemplateMenus();
+window.addEventListener('message', async (e) => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.type === 'EDITOR_CLICKED') closeTemplateMenus();
+  if (e.data.type === 'PICK_TEMPLATE') {
+    const data = await getTemplatesData();
+    const tpl = data.templates.find(t => t.id === e.data.id);
+    if (tpl) insertTemplateIntoCurrentEntry(tpl, e.data.replace);
+  }
 });
+editorFrame.addEventListener('load', sendTemplatesToEditor);
 
 /* ── Templates panel (☰ → templates) ──────────────────────────────── */
 let editingTemplateId = null; // null = creating a new one
