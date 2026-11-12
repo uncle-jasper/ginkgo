@@ -6170,6 +6170,37 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'INSERT_AT_CURSOR' && view) {
     view.dispatch(view.state.replaceSelection(msg.text || ''));
     view.focus();
+  } else if (msg.type === 'INSERT_TEMPLATE' && view) {
+    // Like INSERT_AT_CURSOR, but never lands inside the entry's header
+    // (photo/dateline/mood line/"## " title): if the cursor is up there, the
+    // template goes at the end of the entry instead. Always starts on its
+    // own line.
+    const doc = view.state.doc.toString();
+    const lines = doc.split('\n');
+    let i = 0, pos = 0, headerEnd = 0;
+    const step = () => { pos += lines[i].length + 1; i++; };
+    while (i < lines.length && (lines[i].trim() === '' || /^(!\[[^\]]*\]\([^)]*\)\s*)+$/.test(lines[i].trim()))) step();
+    if (i < lines.length && /^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}\s+(AM|PM)/.test(lines[i].trim())) {
+      step(); headerEnd = pos;
+      if (i < lines.length && /^mood: /.test(lines[i].trim())) { step(); headerEnd = pos; }
+      while (i < lines.length && lines[i].trim() === '') step();
+      if (i < lines.length && /^#{1,2}(\s|$)/.test(lines[i])) { step(); headerEnd = pos; }
+    }
+    headerEnd = Math.min(headerEnd, doc.length);
+    const sel = view.state.selection.main;
+    let from = sel.from, to = sel.to;
+    if (from < headerEnd) { from = to = doc.length; }
+    const before = doc.slice(0, from);
+    let prefix = '';
+    if (from === doc.length && before.trim()) {
+      // Appending: leave a blank line between what's there and the template.
+      prefix = before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    } else if (before && !before.endsWith('\n')) {
+      prefix = '\n';
+    }
+    const text = prefix + (msg.text || '');
+    view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
+    view.focus();
   } else if (msg.type === 'INSERT_PHOTO' && view) {
     // The first photo in an entry goes above the dateline, matching where
     // it ends up as the "hero" image once rendered in preview — later

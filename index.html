@@ -435,6 +435,56 @@
 
   /* ── New entry FAB ───────────────────────────────────────────────── */
   #btn-new-entry { font-size: 20px; line-height: 1; padding: 4px 11px; }
+  #new-entry-wrap { position: relative; display: flex; align-items: center; }
+  #topbar #btn-new-entry-menu { font-size: 12px; padding: 6px 4px; color: var(--muted); margin-left: -4px; }
+  #new-entry-menu { left: auto; right: 0; }
+  /* Phones: the top bar's icon row was already at (or past) the edge of a
+     ~390px screen before ▾ joined it — tighten spacing so it all fits. */
+  @media (max-width: 480px) {
+    #topbar { gap: 2px; padding-left: 6px; padding-right: 6px; }
+    #topbar button { padding: 5px 6px; }
+    #topbar #btn-new-entry { padding: 4px 7px; }
+    #topbar #btn-new-entry-menu { padding: 6px 5px; }
+    #sync-status { padding: 4px 4px; }
+  }
+  .template-menu-label { padding: 5px 12px 3px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .custom-dropdown-item .template-default-mark { color: var(--muted); font-size: 10px; margin-left: 6px; }
+
+  /* ── Templates panel — reuses the .privacy-section pattern ── */
+  #templates-overlay {
+    position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.35);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #templates-box {
+    width: min(420px, 92vw); max-height: 88vh; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px;
+  }
+  #templates-list-view, #template-edit-view { display: flex; flex-direction: column; gap: 14px; }
+  .templates-title { font-size: 15px; font-weight: 600; }
+  #templates-box code { font-family: var(--ui-font); background: var(--border); padding: 0 3px; border-radius: 3px; color: var(--text); }
+  #templates-box textarea, #template-name-input {
+    width: 100%; font-family: var(--ui-font); font-size: 12px; line-height: 1.5;
+    color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+    padding: 8px; outline: none; resize: vertical; cursor: text;
+  }
+  #templates-box textarea:focus, #template-name-input:focus { border-color: var(--accent); }
+  .template-row {
+    display: flex; align-items: center; gap: 8px; padding: 7px 9px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 5px; margin-bottom: 4px; cursor: pointer;
+  }
+  .template-row:hover { background: var(--border); }
+  .template-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .template-row-default { font-size: 10px; color: var(--muted); }
+  #templates-list-empty { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  #template-default-label { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+  #template-default-label input { accent-color: var(--accent); cursor: pointer; }
+  #template-edit-actions { display: flex; gap: 6px; }
+  #template-edit-actions button, #btn-templates-close, #btn-template-new { padding: 7px 12px; border: 1px solid var(--border); font-size: 12px; }
+  #btn-template-new { text-align: left; }
+  #btn-template-delete { color: #b04040; border-color: #b04040 !important; opacity: 0.7; }
+  #btn-template-delete:hover { opacity: 1; }
+  #btn-templates-close { align-self: center; padding: 7px 16px; }
 
   /* ── Lock overlay ────────────────────────────────────────────────── */
   #lock-overlay {
@@ -507,6 +557,8 @@
         <div class="custom-dropdown-item" id="more-style">style</div>
         <div class="custom-dropdown-item" id="more-settings">settings</div>
         <div class="custom-dropdown-item" id="more-shortcuts">keyboard shortcuts</div>
+        <div class="custom-dropdown-item" id="more-templates">templates</div>
+        <div class="custom-dropdown-item" id="more-insert-template">insert template</div>
         <div class="custom-dropdown-item" id="more-export-entry">export this entry (.md)</div>
         <div class="custom-dropdown-item" id="more-export-html">export this entry (.html)</div>
         <div class="custom-dropdown-item" id="more-export-pdf">export this entry (.pdf)</div>
@@ -514,6 +566,7 @@
         <div class="custom-dropdown-item" id="more-privacy">privacy &amp; lock</div>
         <div class="custom-dropdown-item" id="more-about">about ginkgo</div>
       </div>
+      <div id="insert-template-menu" class="custom-dropdown-menu" style="display:none"></div>
     </div>
     <div id="topbar-title">Ginkgo</div>
     <span id="sync-status"></span>
@@ -536,7 +589,10 @@
       </div>
     </div>
     <button id="btn-lock-now" title="Lock now" style="display:none">🔒</button>
-    <button id="btn-new-entry" title="New entry">＋</button>
+    <div id="new-entry-wrap">
+      <button id="btn-new-entry" title="New entry">＋</button><button id="btn-new-entry-menu" title="New entry from template">▾</button>
+      <div id="new-entry-menu" class="custom-dropdown-menu" style="display:none"></div>
+    </div>
   </div>
   <div id="content-row">
     <div id="tags-drawer">
@@ -655,10 +711,51 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.5.2</div>
+    <div id="about-version">version 1.6.0</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <a id="about-coffee-link" href="https://buymeacoffee.com/dandanmian" target="_blank" rel="noopener noreferrer">buy me a coffee</a>
     <button id="btn-about-close">Close</button>
+  </div>
+</div>
+
+<div id="templates-overlay" style="display:none">
+  <div id="templates-box">
+    <div id="templates-list-view">
+      <div class="templates-title">Templates</div>
+      <div class="privacy-section">
+        <div class="privacy-section-desc">
+          Starter text for new entries. The date, location, mood and title still fill in above it.<br><br>
+          <b>＋</b> uses your default · <b>▾</b> picks one · <b>☰ → insert template</b> adds one to the open entry.<br><br>
+          <code>{{weekday}}</code> → Thursday<br>
+          <code>{{date}}</code> → November 12, 2026<br>
+          <code>{{prompt}}</code> → a random question from your prompt list<br><br>
+          Questions you want every day: type them into the template. Questions you want to rotate: add them to the prompt list and use <code>{{prompt}}</code>.
+        </div>
+      </div>
+      <div class="privacy-section">
+        <div class="privacy-section-title">Your templates</div>
+        <div id="templates-list"></div>
+        <button id="btn-template-new">+ new template</button>
+      </div>
+      <div class="privacy-section">
+        <div class="privacy-section-title">Prompt list</div>
+        <div class="privacy-section-desc">One question per line. Each <code>{{prompt}}</code> picks a different one, and recent ones don't repeat until the list runs out.</div>
+        <textarea id="prompts-input" rows="8" spellcheck="true"></textarea>
+      </div>
+      <button id="btn-templates-close">Close</button>
+    </div>
+    <div id="template-edit-view" style="display:none">
+      <div class="templates-title" id="template-edit-title">Edit template</div>
+      <input type="text" id="template-name-input" placeholder="name (e.g. Morning)" autocomplete="off">
+      <textarea id="template-body-input" rows="12" spellcheck="true" placeholder="**Intention:** &#10;&#10;1. What am I grateful for today?&#10;2. {{prompt}}"></textarea>
+      <label id="template-default-label"><input type="checkbox" id="template-default-input"> use for ＋ (default)</label>
+      <div id="template-edit-actions">
+        <button id="btn-template-delete">Delete</button>
+        <span style="flex:1"></span>
+        <button id="btn-template-cancel">Cancel</button>
+        <button id="btn-template-save">Save</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -823,7 +920,7 @@ function deriveTitleAndPreview(content) {
   } else {
     const firstNonEmpty = lines.slice(idx).find(l => {
       const t = l.trim();
-      return t !== '' && !IMAGE_ONLY_LINE_RE.test(t) && !DATELINE_RE.test(t) && !MOOD_LINE_ONLY_RE.test(t);
+      return t !== '' && !IMAGE_ONLY_LINE_RE.test(t) && !DATELINE_RE.test(t) && !MOOD_LINE_ONLY_RE.test(t) && !isTemplateScaffoldLine(t);
     });
     if (firstNonEmpty) title = firstNonEmpty.trim();
   }
@@ -836,7 +933,10 @@ function deriveTitleAndPreview(content) {
   let preview = '';
   for (; idx < lines.length; idx++) {
     const t = lines[idx].trim();
-    if (t !== '' && !IMAGE_ONLY_LINE_RE.test(t) && !MOOD_LINE_ONLY_RE.test(t)) { preview = t; break; }
+    // Lines still exactly as a template wrote them (an empty "**Intention:**",
+    // a fixed question, a {{prompt}} question) aren't what the entry says —
+    // skip them so the preview shows what was actually written.
+    if (t !== '' && !IMAGE_ONLY_LINE_RE.test(t) && !MOOD_LINE_ONLY_RE.test(t) && !isTemplateScaffoldLine(t)) { preview = t; break; }
   }
   return { title, preview: preview.slice(0, 150) };
 }
@@ -1058,7 +1158,7 @@ async function newEntryMeta(date) {
 }
 
 let creatingEntry = false;
-async function createEntry(date) {
+async function createEntry(date, template) {
   if (creatingEntry) return; // guard against double-tap / overlapping calls
   creatingEntry = true;
   try {
@@ -1070,7 +1170,13 @@ async function createEntry(date) {
     // several seconds, which used to leave currentEntryId unset the whole
     // time — e.g. blocking "attach photo" right after tapping "+").
     const timestampLine = formatEntryTimestamp(date);
-    const content = `${timestampLine}\n## \n\n`;
+    // A template (if any) goes below the title line, so the dateline, the
+    // mood line beneath it and the "## " title all stay exactly where the
+    // rest of the app expects them. template === undefined means "use the
+    // default"; null means an explicitly blank entry.
+    const tpl = template === undefined ? await getDefaultTemplate() : template;
+    const templateText = tpl ? renderTemplateBody(tpl.body, date) : '';
+    const content = `${timestampLine}\n## \n\n${templateText}`;
     meta.contentHash = await sha256Hex(content);
     await idbPut('entries_meta', meta);
     await idbPut('entries_body', { id: meta.id, content });
@@ -3015,6 +3121,7 @@ async function isDropboxConnected() { return !!(await idbGet('sync_meta', 'dropb
 async function disconnectDropbox() {
   await idbDelete('sync_meta', 'dropbox_auth');
   await idbDelete('sync_meta', 'dropbox_cursor');
+  await resetTemplatesSyncState();
   updateSyncStatus('disconnected');
 }
 
@@ -3161,6 +3268,7 @@ async function pushDirtyAndTombstoned() {
 async function handleRemoteEntry(entry) {
   const path = entry.path_lower || entry.path_display;
   if (!path) return;
+  if (path === TEMPLATES_REMOTE_PATH) { await noteRemoteTemplates(entry); return; }
   // Only per-entry .md files live at the sync layer — anything else in the
   // app folder (the /backups zip snapshots, the /.ginkgo-salt file) is not
   // a journal entry and must never be ingested as one.
@@ -3301,7 +3409,9 @@ async function runSync() {
     const encSettings = await getSyncEncryptionSettings();
     if (!encSettings.saltB64) await fetchEncryptionSaltFromDropbox(); // adopt encryption from another device, if any
     await pullFromDropbox();
-    const { lastError } = await pushDirtyAndTombstoned();
+    const pushResult = await pushDirtyAndTombstoned();
+    const templatesError = await syncTemplates();
+    const lastError = pushResult.lastError || templatesError;
     await idbPut('sync_meta', { key: 'last_sync', lastPushAt: new Date().toISOString(), lastPullAt: new Date().toISOString(), lastError: lastError || null });
     updateSyncStatus(lastError ? 'error' : 'synced', lastError);
     await renderCalendar();
@@ -3649,6 +3759,410 @@ document.getElementById('import-input').addEventListener('change', async (e) => 
 });
 
 /* ════════════════════════════════════════════════════════════════════
+   Templates — starter text for new entries, with {{weekday}}, {{date}}
+   and {{prompt}} placeholders. Stored in sync_meta under 'templates' and
+   synced as a single JSON file (TEMPLATES_REMOTE_PATH) alongside the
+   per-entry .md files. Until the user edits anything, the starter set
+   below lives only in memory and is never uploaded, so a fresh device
+   can't overwrite templates another device already synced.
+   ════════════════════════════════════════════════════════════════════ */
+const TEMPLATES_REMOTE_PATH = '/.ginkgo-templates.json';
+const PROMPT_HISTORY_KEY = 'ginkgo-prompt-history';
+const STARTER_TEMPLATES = {
+  templates: [
+    { id: 'starter-morning', name: 'Morning', body: '**Intention:** \n\n**Prompt:** {{prompt}}\n\n' },
+    { id: 'starter-evening', name: 'Evening', body: '### End of day\n1. What went well?\n2. What drained me?\n3. What do I want to carry into tomorrow?\n\n' },
+  ],
+  defaultId: null,
+  prompts: [
+    'What did the city sound like today?',
+    'Who did you talk to that you didn\'t expect to?',
+    'What\'s one thing you noticed on the walk home?',
+    'What are you avoiding right now, and why?',
+    'What made you laugh today?',
+    'What would you tell yourself from a year ago?',
+    'What\'s something small that went right?',
+    'Where did your attention go today?',
+    'What do you miss, and what don\'t you miss?',
+    'What\'s one thing you want to remember about today?',
+  ],
+};
+
+let templatesCache = null;     // { templates, defaultId, prompts }
+let templateScaffoldRes = [];  // see isTemplateScaffoldLine
+
+function normalizeTemplatesData(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const templates = Array.isArray(d.templates) ? d.templates
+    .filter(t => t && typeof t === 'object')
+    .map(t => ({ id: String(t.id || genId()), name: String(t.name || 'untitled'), body: String(t.body || '') })) : [];
+  const prompts = Array.isArray(d.prompts) ? d.prompts.map(p => String(p).trim()).filter(Boolean) : [];
+  const defaultId = templates.some(t => t.id === d.defaultId) ? d.defaultId : null;
+  return { templates, defaultId, prompts };
+}
+
+async function loadTemplatesRecord() {
+  return (await idbGet('sync_meta', 'templates')) ||
+    { key: 'templates', data: null, updatedAt: null, dirty: false, remoteRev: null, remoteSeenRev: null };
+}
+
+function setTemplatesCache(data) {
+  templatesCache = normalizeTemplatesData(data);
+  rebuildTemplateScaffold();
+}
+
+async function getTemplatesData() {
+  if (!templatesCache) {
+    const rec = await loadTemplatesRecord();
+    setTemplatesCache(rec.data || STARTER_TEMPLATES);
+  }
+  return templatesCache;
+}
+
+async function saveTemplatesData(data) {
+  const rec = await loadTemplatesRecord();
+  rec.data = normalizeTemplatesData(data);
+  rec.updatedAt = new Date().toISOString();
+  rec.dirty = true;
+  await idbPut('sync_meta', rec);
+  setTemplatesCache(rec.data);
+  if (typeof scheduleSync === 'function') scheduleSync();
+}
+
+async function getDefaultTemplate() {
+  const data = await getTemplatesData();
+  return data.templates.find(t => t.id === data.defaultId) || null;
+}
+
+// Picks a prompt not used recently (per device). Once every prompt has
+// been used, the history resets — but never hands back the one just used
+// if there's any alternative. `usedNow` keeps two {{prompt}}s in the same
+// template from landing on the same question.
+function pickPrompt(usedNow) {
+  const prompts = [...new Set((templatesCache ? templatesCache.prompts : []))];
+  if (!prompts.length) return '';
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || '[]'); } catch (e) {}
+  if (!Array.isArray(history)) history = [];
+  history = history.filter(h => prompts.includes(h));
+  let candidates = prompts.filter(p => !history.includes(p) && !usedNow.has(p));
+  if (!candidates.length) {
+    const last = history[history.length - 1];
+    history = [];
+    candidates = prompts.filter(p => !usedNow.has(p) && p !== last);
+    if (!candidates.length) candidates = prompts.filter(p => !usedNow.has(p));
+    if (!candidates.length) candidates = prompts;
+  }
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  usedNow.add(pick);
+  history.push(pick);
+  try { localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history.slice(-prompts.length))); } catch (e) {}
+  return pick;
+}
+
+const TEMPLATE_PLACEHOLDER_RE = /\{\{\s*(weekday|date|prompt)\s*\}\}/gi;
+function renderTemplateBody(body, date) {
+  date = date || new Date();
+  const usedNow = new Set();
+  let out = String(body || '').replace(TEMPLATE_PLACEHOLDER_RE, (m, kind) => {
+    kind = kind.toLowerCase();
+    if (kind === 'weekday') return date.toLocaleDateString('en-US', { weekday: 'long' });
+    if (kind === 'date') return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    return pickPrompt(usedNow);
+  });
+  if (out && !out.endsWith('\n')) out += '\n';
+  return out;
+}
+
+// One regex per distinct template line, matching that line as a template
+// would render it (placeholders → any weekday / long date / prompt from the
+// list). deriveTitleAndPreview skips matching lines, so an entry's preview
+// is the first thing actually written, not "**Intention:**" every time.
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function rebuildTemplateScaffold() {
+  const data = templatesCache || { templates: [], prompts: [] };
+  const alts = {
+    weekday: '(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)',
+    date: '(?:[A-Z][a-z]+ \\d{1,2}, \\d{4})',
+    prompt: data.prompts.length ? '(?:' + data.prompts.map(escapeRegExp).join('|') + ')' : '',
+  };
+  const res = [], seen = new Set();
+  for (const t of data.templates) {
+    for (const line of t.body.split('\n')) {
+      const tl = line.trim();
+      if (!tl || seen.has(tl)) continue;
+      seen.add(tl);
+      const parts = tl.split(/\{\{\s*(weekday|date|prompt)\s*\}\}/i);
+      const src = parts.map((p, i) => i % 2 ? alts[p.toLowerCase()] : escapeRegExp(p).replace(/\s+/g, '\\s*')).join('');
+      if (!src) continue;
+      try { res.push(new RegExp('^' + src + '\\s*$')); } catch (e) {}
+    }
+  }
+  templateScaffoldRes = res;
+}
+function isTemplateScaffoldLine(trimmedLine) {
+  for (const re of templateScaffoldRes) if (re.test(trimmedLine)) return true;
+  return false;
+}
+
+/* ── Sync: one JSON file, last edit wins ──────────────────────────── */
+async function noteRemoteTemplates(entry) {
+  if (entry['.tag'] !== 'file') return; // a remote delete is ignored — the local copy re-uploads on its next edit
+  const rec = await loadTemplatesRecord();
+  if (rec.remoteRev === entry.rev) return; // our own upload, or already applied
+  rec.remoteSeenRev = entry.rev;
+  await idbPut('sync_meta', rec);
+}
+
+// Runs every sync (not just when the folder listing mentions the file), so
+// a download that failed — e.g. encrypted and no passphrase yet this
+// session — is retried later instead of being lost once the cursor moves on.
+async function pullTemplatesIfNeeded() {
+  const rec = await loadTemplatesRecord();
+  if (!rec.remoteSeenRev || rec.remoteSeenRev === rec.remoteRev) return;
+  const seenRev = rec.remoteSeenRev;
+  let raw;
+  try { raw = await dbxDownload(TEMPLATES_REMOTE_PATH); }
+  catch (e) {
+    if (e.status === 409) { rec.remoteSeenRev = null; await idbPut('sync_meta', rec); return; }
+    throw e;
+  }
+  const parsed = JSON.parse(await maybeDecryptFromDownload(raw));
+  const remoteUpdated = Date.parse(parsed.updatedAt || 0) || 0;
+  const localUpdated = Date.parse(rec.updatedAt || 0) || 0;
+  if (!rec.dirty || remoteUpdated > localUpdated) {
+    rec.data = normalizeTemplatesData(parsed.data);
+    rec.updatedAt = parsed.updatedAt || new Date().toISOString();
+    rec.dirty = false;
+    setTemplatesCache(rec.data);
+    if (document.getElementById('templates-overlay').style.display !== 'none' &&
+        document.getElementById('template-edit-view').style.display === 'none') {
+      renderTemplatesPanel();
+    }
+  }
+  rec.remoteRev = seenRev;
+  await idbPut('sync_meta', rec);
+}
+
+async function pushTemplatesIfDirty() {
+  const rec = await loadTemplatesRecord();
+  if (!rec.dirty || !rec.data) return;
+  const payload = JSON.stringify({ version: 1, updatedAt: rec.updatedAt, data: rec.data }, null, 2);
+  const body = await maybeEncryptForUpload(payload);
+  const result = await dbxUpload(TEMPLATES_REMOTE_PATH, body, { '.tag': 'overwrite' });
+  const fresh = await loadTemplatesRecord();
+  if (fresh.updatedAt === rec.updatedAt) fresh.dirty = false; // not edited again mid-upload
+  fresh.remoteRev = result.rev;
+  fresh.remoteSeenRev = result.rev;
+  await idbPut('sync_meta', fresh);
+}
+
+async function syncTemplates() {
+  try {
+    await pullTemplatesIfNeeded();
+    await pushTemplatesIfDirty();
+    return null;
+  } catch (e) {
+    if (e.isRateLimit || e.notConnected) return null;
+    console.error('Ginkgo template sync failed', e);
+    return `templates: ${(e && e.message) || e}`;
+  }
+}
+
+// After a disconnect, the next connection may be a different Dropbox (or
+// one where the file was removed) — forget the old revs and re-upload
+// local templates, unless that Dropbox turns out to have newer ones.
+async function resetTemplatesSyncState() {
+  const rec = await loadTemplatesRecord();
+  if (!rec.data) return;
+  rec.remoteRev = null;
+  rec.remoteSeenRev = null;
+  rec.dirty = true;
+  await idbPut('sync_meta', rec);
+}
+
+/* ── Menus: ▾ next to ＋, and ☰ → insert template ─────────────────── */
+function closeTemplateMenus() {
+  document.getElementById('new-entry-menu').style.display = 'none';
+  document.getElementById('insert-template-menu').style.display = 'none';
+}
+
+function fillTemplateMenu(menu, data, includeBlank, onPick) {
+  menu.innerHTML = '';
+  const label = document.createElement('div');
+  label.className = 'template-menu-label';
+  label.textContent = includeBlank ? 'new entry' : 'insert template';
+  menu.appendChild(label);
+  const add = (text, isDefault, tpl) => {
+    const item = document.createElement('div');
+    item.className = 'custom-dropdown-item';
+    item.textContent = text;
+    if (isDefault) {
+      const mark = document.createElement('span');
+      mark.className = 'template-default-mark';
+      mark.textContent = 'default';
+      item.appendChild(mark);
+    }
+    item.addEventListener('click', (e) => { e.stopPropagation(); closeTemplateMenus(); onPick(tpl); });
+    menu.appendChild(item);
+  };
+  if (includeBlank) add('blank', !data.defaultId, null);
+  data.templates.forEach(t => add(t.name, includeBlank && t.id === data.defaultId, t));
+  if (!data.templates.length && !includeBlank) add('no templates yet', false, undefined);
+  const manage = document.createElement('div');
+  manage.className = 'custom-dropdown-item';
+  manage.style.color = 'var(--muted)';
+  manage.textContent = 'manage templates…';
+  manage.addEventListener('click', (e) => { e.stopPropagation(); closeTemplateMenus(); openTemplatesPanel(); });
+  menu.appendChild(manage);
+}
+
+document.getElementById('btn-new-entry-menu').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const menu = document.getElementById('new-entry-menu');
+  if (menu.style.display !== 'none') { menu.style.display = 'none'; return; }
+  closeMoreMenu();
+  closeTemplateMenus();
+  fillTemplateMenu(menu, await getTemplatesData(), true, (tpl) => createEntry(new Date(), tpl));
+  menu.style.display = 'block';
+});
+
+document.getElementById('more-insert-template').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  closeMoreMenu();
+  if (!currentEntryId) { alert('Open or create an entry first, then insert a template into it.'); return; }
+  const menu = document.getElementById('insert-template-menu');
+  fillTemplateMenu(menu, await getTemplatesData(), false, insertTemplateIntoCurrentEntry);
+  menu.style.display = 'block';
+});
+
+async function insertTemplateIntoCurrentEntry(tpl) {
+  if (!tpl) { if (tpl === undefined) openTemplatesPanel(); return; }
+  if (!currentEntryId || !editorFrame.contentWindow) return;
+  // Placeholders follow the entry's own date, so inserting into an older
+  // entry gives that day's weekday, not today's.
+  const meta = await idbGet('entries_meta', currentEntryId);
+  const date = meta ? new Date(meta.createdAt) : new Date();
+  // INSERT_TEMPLATE (not INSERT_AT_CURSOR): the editor moves the insertion
+  // below the dateline/mood/title header if the cursor is up there.
+  editorFrame.contentWindow.postMessage({ type: 'SET_MODE', mode: 'write' }, location.origin);
+  editorFrame.contentWindow.postMessage({ type: 'INSERT_TEMPLATE', text: renderTemplateBody(tpl.body, date) }, location.origin);
+}
+
+document.getElementById('btn-more-menu').addEventListener('click', closeTemplateMenus);
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#new-entry-wrap') && !e.target.closest('#more-menu-wrap')) closeTemplateMenus();
+});
+window.addEventListener('message', (e) => {
+  if (e.origin === location.origin && e.data && e.data.type === 'EDITOR_CLICKED') closeTemplateMenus();
+});
+
+/* ── Templates panel (☰ → templates) ──────────────────────────────── */
+let editingTemplateId = null; // null = creating a new one
+
+async function openTemplatesPanel() {
+  closeMoreMenu();
+  closeTemplateMenus();
+  await renderTemplatesPanel();
+  showTemplatesListView();
+  document.getElementById('templates-overlay').style.display = 'flex';
+}
+
+function showTemplatesListView() {
+  document.getElementById('templates-list-view').style.display = '';
+  document.getElementById('template-edit-view').style.display = 'none';
+}
+
+async function renderTemplatesPanel() {
+  const data = await getTemplatesData();
+  const list = document.getElementById('templates-list');
+  list.innerHTML = '';
+  if (!data.templates.length) {
+    const empty = document.createElement('div');
+    empty.id = 'templates-list-empty';
+    empty.textContent = 'No templates yet — ＋ makes blank entries.';
+    list.appendChild(empty);
+  }
+  for (const t of data.templates) {
+    const row = document.createElement('div');
+    row.className = 'template-row';
+    const name = document.createElement('span');
+    name.className = 'template-row-name';
+    name.textContent = t.name;
+    row.appendChild(name);
+    if (t.id === data.defaultId) {
+      const d = document.createElement('span');
+      d.className = 'template-row-default';
+      d.textContent = 'default';
+      row.appendChild(d);
+    }
+    row.addEventListener('click', () => openTemplateEditor(t.id));
+    list.appendChild(row);
+  }
+  document.getElementById('prompts-input').value = data.prompts.join('\n');
+}
+
+async function openTemplateEditor(id) {
+  const data = await getTemplatesData();
+  const t = id ? data.templates.find(x => x.id === id) : null;
+  editingTemplateId = t ? t.id : null;
+  document.getElementById('template-edit-title').textContent = t ? 'Edit template' : 'New template';
+  document.getElementById('template-name-input').value = t ? t.name : '';
+  document.getElementById('template-body-input').value = t ? t.body : '';
+  document.getElementById('template-default-input').checked = !!(t && t.id === data.defaultId);
+  document.getElementById('btn-template-delete').style.display = t ? '' : 'none';
+  document.getElementById('templates-list-view').style.display = 'none';
+  document.getElementById('template-edit-view').style.display = '';
+  document.getElementById('template-name-input').focus();
+}
+
+async function savePromptsIfChanged() {
+  const data = await getTemplatesData();
+  const prompts = document.getElementById('prompts-input').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (prompts.join('\n') === data.prompts.join('\n')) return;
+  await saveTemplatesData({ ...data, prompts });
+}
+
+document.getElementById('more-templates').addEventListener('click', openTemplatesPanel);
+document.getElementById('btn-template-new').addEventListener('click', () => openTemplateEditor(null));
+document.getElementById('btn-template-cancel').addEventListener('click', () => { renderTemplatesPanel(); showTemplatesListView(); });
+document.getElementById('prompts-input').addEventListener('blur', savePromptsIfChanged);
+document.getElementById('btn-templates-close').addEventListener('click', async () => {
+  await savePromptsIfChanged();
+  document.getElementById('templates-overlay').style.display = 'none';
+});
+
+document.getElementById('btn-template-save').addEventListener('click', async () => {
+  const name = document.getElementById('template-name-input').value.trim();
+  const body = document.getElementById('template-body-input').value;
+  if (!name) { alert('Give the template a name.'); document.getElementById('template-name-input').focus(); return; }
+  const data = await getTemplatesData();
+  const templates = data.templates.map(t => ({ ...t }));
+  let id = editingTemplateId;
+  const existing = id && templates.find(t => t.id === id);
+  if (existing) { existing.name = name; existing.body = body; }
+  else { id = genId(); templates.push({ id, name, body }); }
+  const makeDefault = document.getElementById('template-default-input').checked;
+  let defaultId = data.defaultId;
+  if (makeDefault) defaultId = id;
+  else if (defaultId === id) defaultId = null;
+  await saveTemplatesData({ ...data, templates, defaultId });
+  await renderTemplatesPanel();
+  showTemplatesListView();
+});
+
+document.getElementById('btn-template-delete').addEventListener('click', async () => {
+  if (!editingTemplateId) return;
+  const data = await getTemplatesData();
+  const t = data.templates.find(x => x.id === editingTemplateId);
+  if (!t || !confirm(`Delete the "${t.name}" template? Entries already made from it aren't affected.`)) return;
+  const templates = data.templates.filter(x => x.id !== editingTemplateId);
+  await saveTemplatesData({ ...data, templates, defaultId: data.defaultId === editingTemplateId ? null : data.defaultId });
+  await renderTemplatesPanel();
+  showTemplatesListView();
+});
+
+/* ════════════════════════════════════════════════════════════════════
    Drawer / view toggling
    ════════════════════════════════════════════════════════════════════ */
 function updateDrawerHandleChevron() {
@@ -3796,6 +4310,7 @@ window.addEventListener('resize', syncTopbarHeight);
     maybePromptForSyncPassphrase();
   }
   refreshLockButtonVisibility();
+  await getTemplatesData(); // loads templates (and the preview-skip patterns) before anything derives a preview
   await repairOrphanedConflictFlags();
   await repairMisderivedTitles();
   await renderCalendar();
