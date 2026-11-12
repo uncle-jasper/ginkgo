@@ -39,4 +39,5 @@ Placeholders use the entry's own date, so inserting a template into an older ent
 **Good to know**
 - The entry list's preview skips template lines you haven't filled in, so it shows what you actually wrote.
 - Deleting or editing a template never changes entries already made from it.
+- Templates are included in **export all (.zip)**, the daily Dropbox backups and the decrypted export, as `ginkgo-templates.json`. Restoring a backup brings them back, unless the templates on your device are newer.
 - Templates sync as one file (`.ginkgo-templates.json`) in your Ginkgo Dropbox folder, encrypted if sync encryption is on. If two devices edit templates before syncing, the most recent edit wins.

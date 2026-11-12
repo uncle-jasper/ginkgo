@@ -2959,6 +2959,8 @@ async function decryptAndExportFromDropbox() {
   if (!paths.length) { alert('No entries found in Dropbox.'); return; }
 
   const zipFiles = [];
+  const tplFile = await templatesZipFile(false);
+  if (tplFile) zipFiles.push(tplFile);
   let failures = 0;
   for (const path of paths) {
     try {
@@ -2983,7 +2985,8 @@ async function decryptAndExportFromDropbox() {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-  alert(`Exported ${zipFiles.length} entr${zipFiles.length === 1 ? 'y' : 'ies'} as plain text.` +
+  const entryCount = zipFiles.length - (tplFile ? 1 : 0);
+  alert(`Exported ${entryCount} entr${entryCount === 1 ? 'y' : 'ies'}${tplFile ? ' and your templates' : ''} as plain text.` +
     (failures ? ` ${failures} failed (wrong passphrase, or file not readable).` : ''));
 }
 
@@ -3565,14 +3568,45 @@ function readZip(bytes) {
   return files;
 }
 
+// Templates ride along in exports and backups as one JSON file at the zip's
+// root. Skipped while the user has never edited them (just the built-in
+// starters — nothing of theirs to save). `encrypt` follows the entries:
+// backups are encrypted when sync encryption is on, exports are plain.
+const TEMPLATES_ZIP_NAME = 'ginkgo-templates.json';
+async function templatesZipFile(encrypt) {
+  const rec = await loadTemplatesRecord();
+  if (!rec.data) return null;
+  const json = JSON.stringify({ version: 1, updatedAt: rec.updatedAt, data: rec.data }, null, 2);
+  return { name: TEMPLATES_ZIP_NAME, data: encrypt ? await maybeEncryptForUpload(json) : json };
+}
+
+// Restores templates from a backup/export zip, with the same rule entries
+// use: never replace a local copy that's newer than the one in the zip.
+async function restoreTemplatesFromZipText(text) {
+  const plain = isEncryptedPacked(text) ? await decryptString(text, sessionEncryptionKey) : text;
+  const parsed = JSON.parse(plain);
+  const rec = await loadTemplatesRecord();
+  const zipUpdated = Date.parse(parsed.updatedAt || 0) || 0;
+  const localUpdated = Date.parse(rec.updatedAt || 0) || 0;
+  if (rec.data && localUpdated >= zipUpdated) return 'skipped';
+  rec.data = normalizeTemplatesData(parsed.data);
+  rec.updatedAt = parsed.updatedAt || new Date().toISOString();
+  rec.dirty = true;
+  await idbPut('sync_meta', rec);
+  setTemplatesCache(rec.data);
+  return 'restored';
+}
+
 async function exportAllAsZip() {
   const metas = [];
   await idbCursor('entries_meta', null, null, 'next', (cursor) => {
     if (cursor.value.syncState !== 'tombstone') metas.push(cursor.value);
     return true;
   });
-  if (!metas.length) { alert('No entries to export yet.'); return; }
+  const tplFile = await templatesZipFile(false);
+  if (!metas.length && !tplFile) { alert('No entries to export yet.'); return; }
   const zipFiles = [];
+  if (tplFile) zipFiles.push(tplFile);
   for (const meta of metas) {
     const body = await idbGet('entries_body', meta.id);
     if (!body) continue;
@@ -3616,6 +3650,8 @@ async function buildBackupZipBytes() {
     const content = await maybeEncryptForUpload(body.content);
     zipFiles.push({ name, data: buildFileContent(meta, content) });
   }
+  const tplFile = await templatesZipFile(true);
+  if (tplFile) zipFiles.push(tplFile);
   return buildZip(zipFiles);
 }
 
@@ -3665,10 +3701,12 @@ async function restoreFromBackupZip(file) {
     return;
   }
   const mdFiles = zipFiles.filter(f => /\.md$/i.test(f.name));
-  if (!mdFiles.length) { alert('No .md entries found in that zip.'); return; }
+  const tplZipFile = zipFiles.find(f => f.name === TEMPLATES_ZIP_NAME);
+  const tplText = tplZipFile ? new TextDecoder().decode(tplZipFile.data) : null;
+  if (!mdFiles.length && !tplText) { alert('No .md entries found in that zip.'); return; }
   const parsedList = mdFiles.map(f => parseFileContent(new TextDecoder().decode(f.data)));
 
-  const anyEncrypted = parsedList.some(p => isEncryptedPacked(p.content));
+  const anyEncrypted = parsedList.some(p => isEncryptedPacked(p.content)) || isEncryptedPacked(tplText);
   if (anyEncrypted && !sessionEncryptionKey) {
     const settings = await getSyncEncryptionSettings();
     if (!settings.saltB64) {
@@ -3691,10 +3729,20 @@ async function restoreFromBackupZip(file) {
       failed++;
     }
   }
+  let templatesNote = '';
+  if (tplText) {
+    try {
+      const r = await restoreTemplatesFromZipText(tplText);
+      templatesNote = r === 'restored' ? ' Templates restored.' : ' Templates skipped (already up to date on this device).';
+    } catch (e) {
+      console.error('Restore failed for templates', e);
+      templatesNote = ' Templates could not be restored.';
+    }
+  }
   await renderCalendar();
   await refreshLoadedMonths();
   if (typeof scheduleSync === 'function') scheduleSync();
-  alert(`Restore complete: ${imported} imported, ${skipped} skipped (already newer locally)${failed ? `, ${failed} failed` : ''}.`);
+  alert(`Restore complete: ${imported} imported, ${skipped} skipped (already newer locally)${failed ? `, ${failed} failed` : ''}.${templatesNote}`);
 }
 
 // Shared by importMarkdownFiles and restoreFromBackupZip — both are just
