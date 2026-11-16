@@ -44,3 +44,16 @@ Placeholders use the entry's own date, so inserting a template into an older ent
 - Deleting or editing a template never changes entries already made from it.
 - Templates are included in **export all (.zip)**, the daily Dropbox backups and the decrypted export, as `ginkgo-templates.json`. Restoring a backup brings them back, unless the templates on your device are newer.
 - Templates sync as one file (`.ginkgo-templates.json`) in your Ginkgo Dropbox folder, encrypted if sync encryption is on. If two devices edit templates before syncing, the most recent edit wins.
+
+## Spellcheck
+
+Ginkgo has its own spellchecker, so suggestions are the same on Mac, Windows and Linux and nothing leaves your device.
+
+- Misspelled words get a wavy red underline. Click one to see suggestions, then click a suggestion to replace the word.
+- **Ctrl+;** (**Cmd+;** on Mac) opens suggestions for the next misspelled word from your cursor. Use the arrow keys and Enter to pick one, or Esc to close.
+- **add to dictionary** remembers a word (a name, a place, a brand) on this device. **ignore** skips it until you reload.
+- The word you're typing isn't flagged until you move past it.
+- Links, code and other markdown syntax aren't checked.
+- Turn it off under **settings → spellcheck**.
+
+The word list (`spell-words.txt`) is the Hunspell US English dictionary plus common modern words. It downloads once (about 300 KB) and then works offline.
