@@ -429,18 +429,30 @@
         p.sel = (p.sel + d + p.items.length) % p.items.length;
         p.items[p.sel].el.classList.add('cm-spell-active');
       }
-      destroy() { this.closePopup(); views.delete(this.view); }
+      destroy() { clearTimeout(this.pendingOpen); this.closePopup(); views.delete(this.view); }
     }, {
       decorations: v => v.decorations,
       eventHandlers: {
-        mouseup(e, view) {
-          if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+        // A second click cancels a pending popup, so double-click is left to
+        // the app's own word menu (define / synonyms) without a flash.
+        mousedown(e, view) {
           const p = view.plugin(plugin);
-          if (!p || !view.state.selection.main.empty) return;
+          if (p && p.pendingOpen) { clearTimeout(p.pendingOpen); p.pendingOpen = null; }
+        },
+        mouseup(e, view) {
+          if (e.button !== 0 || e.detail > 1 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+          const p = view.plugin(plugin);
+          if (!p) return;
           const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-          if (pos == null) return;
-          const r = p.markAt(pos);
-          if (r) setTimeout(() => p.openPopup(r), 0);
+          if (pos == null || !p.markAt(pos)) return;
+          // Check after the delay: clicking a selected word only clears the
+          // selection once the click finishes.
+          p.pendingOpen = setTimeout(() => {
+            p.pendingOpen = null;
+            if (!view.state.selection.main.empty) return;
+            const r = p.markAt(pos);
+            if (r) p.openPopup(r);
+          }, 250);
         }
       }
     });
