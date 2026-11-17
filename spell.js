@@ -366,6 +366,10 @@
         const box = document.createElement('div');
         box.className = 'cm-spell-popup';
         box.setAttribute('role', 'menu');
+        const head = document.createElement('div');
+        head.className = 'cm-spell-header';
+        head.textContent = word;
+        box.appendChild(head);
         const items = [];
         const add = (label, cls, fn) => {
           const b = document.createElement('button');
@@ -485,16 +489,18 @@
         '.cm-content .cm-misspelled,.cm-line .cm-misspelled{text-decoration-line:underline!important;' +
         'text-decoration-style:wavy!important;text-decoration-color:rgba(224,96,96,.8)!important;' +
         'text-decoration-thickness:1px!important;text-underline-offset:3px;text-decoration-skip-ink:none}' +
-        '.cm-spell-popup{position:fixed;z-index:10000;min-width:150px;max-width:260px;padding:4px;' +
-        'background:var(--surface,var(--bg,#fff));color:var(--text,#222);border:1px solid var(--border,rgba(128,128,128,.3));' +
-        'border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.22);font-family:var(--ui-font,var(--editor-font,inherit));font-size:13px;line-height:1.3}' +
-        '.cm-spell-item{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;font:inherit;' +
-        'padding:6px 10px;border-radius:4px;cursor:pointer}' +
-        '.cm-spell-sug{font-weight:600}' +
-        '.cm-spell-action,.cm-spell-none{color:var(--muted,#888)}' +
-        '.cm-spell-none{padding:6px 10px;font-style:italic}' +
-        '.cm-spell-item:hover,.cm-spell-item.cm-spell-active{background:var(--border,rgba(128,128,128,.18));color:var(--text,#222)}' +
-        '.cm-spell-sep{height:1px;margin:4px 6px;background:var(--border,rgba(128,128,128,.3))}';
+        // Matches the apps' double-click word menu (#word-menu / .wm-*).
+        '.cm-spell-popup{position:fixed;z-index:10000;min-width:160px;max-width:280px;padding:4px 0;' +
+        'background:var(--surface,#fff);border:1px solid var(--border,rgba(128,128,128,.3));border-radius:8px;' +
+        'box-shadow:0 4px 20px rgba(0,0,0,.3);font-family:"JetBrains Mono",monospace;font-size:11px}' +
+        '.cm-spell-header{padding:6px 12px 5px;font-size:10px;color:var(--accent,#888);opacity:.9;font-weight:600;' +
+        'border-bottom:1px solid var(--border,rgba(128,128,128,.3))}' +
+        '.cm-spell-item{display:block;width:100%;text-align:left;padding:6px 12px;cursor:pointer;color:var(--text,#222);' +
+        'opacity:.75;background:none;border:none;font-family:"JetBrains Mono",monospace;font-size:11px;' +
+        'transition:opacity .1s,background .1s}' +
+        '.cm-spell-item:hover,.cm-spell-item.cm-spell-active{opacity:1;background:var(--border,rgba(128,128,128,.18))}' +
+        '.cm-spell-none{padding:6px 12px;color:var(--muted,#888);font-size:10px}' +
+        '.cm-spell-sep{border-top:1px solid var(--border,rgba(128,128,128,.3));margin:2px 0;opacity:.4}';
       document.head.appendChild(st);
     }
 
