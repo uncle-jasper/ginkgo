@@ -3,11 +3,11 @@
 
    - Word list: spell-words.txt next to this file (Hunspell en_US / SCOWL plus
      common modern words), loaded once and cached by the service worker.
-   - Misspelled words get a wavy underline. Click one (or press Ctrl/Cmd+;)
-     for suggestions, "add to dictionary" or "ignore".
+   - Misspelled words get a wavy underline. The app's word menu shows
+     suggestions, "add to dictionary" and "ignore" (see extension()).
    - Nothing leaves the device. Added words live in localStorage.
 
-   Usage:  const ext = Spell.extension(CM6, { wordsUrl, storageKey });
+   Usage:  const ext = Spell.extension(CM6, { wordsUrl, storageKey, onMenu });
            ...put ext in the editor's extensions; Spell.setEnabled(view, bool). */
 (function (root) {
   'use strict';
@@ -271,6 +271,9 @@
   // Markdown nodes whose text shouldn't be checked.
   const SKIP_NODES = /^(URL|LinkLabel|LinkTitle|CodeText|InlineCode|FencedCode|CodeBlock|CodeInfo|HTMLTag|HTMLBlock|Autolink|Comment|CommentBlock|ProcessingInstruction)$/;
 
+  // Underlines misspelled words. It draws no menu of its own: clicking an
+  // underlined word, or Ctrl/Cmd+;, calls opts.onMenu(view, {from, to}) and
+  // the app shows its word menu (suggestions, define, synonyms) there.
   function extension(CM, opts) {
     opts = opts || {};
     if (opts.storageKey) storageKey = opts.storageKey;
@@ -279,16 +282,24 @@
     const mark = Decoration.mark({ class: 'cm-misspelled' });
     const refresh = StateEffect.define();
     let enabled = opts.enabled !== false;
-    let views = new Set();
+    const views = new Set();
 
     function refreshAll() { cache.clear(); views.forEach(v => v.dispatch({ effects: refresh.of(null) })); }
+
+    function skipped(state, from, to) {
+      let skip = false;
+      syntaxTree(state).iterate({ from, to, enter: n => {
+        if (SKIP_NODES.test(n.name) && n.from < to && n.to > from) { skip = true; return false; }
+      }});
+      return skip || !!(opts.skip && opts.skip(state, from, to));
+    }
 
     const plugin = ViewPlugin.fromClass(class {
       constructor(view) {
         this.view = view;
         this.decorations = Decoration.none;
         this.typingAt = -1;
-        this.popup = null;
+        this.pendingOpen = null;
         views.add(view);
         if (enabled) this.ensureLoaded();
         this.build();
@@ -304,14 +315,12 @@
         if (u.docChanged) {
           const typed = u.transactions.some(t => t.isUserEvent('input.type') || t.isUserEvent('delete'));
           this.typingAt = typed ? u.state.selection.main.head : -1;
-          this.closePopup();
         } else if (u.selectionSet && this.typingAt >= 0) {
           // Moving the cursor off the word you were typing lets it be checked.
           const h = u.state.selection.main.head;
-          if (!u.state.selection.main.empty || Math.abs(h - this.typingAt) > 0 ||
+          if (!u.state.selection.main.empty || h !== this.typingAt ||
               u.transactions.some(t => t.isUserEvent('select'))) { this.typingAt = -1; forced = true; }
         }
-        if (u.viewportChanged) this.closePopup();
         if (forced || u.docChanged || u.viewportChanged) this.build();
       }
       build() {
@@ -327,8 +336,7 @@
           }});
           let line = state.doc.lineAt(from);
           for (;;) {
-            const text = line.text;
-            for (const w of wordsIn(text, line.from)) {
+            for (const w of wordsIn(line.text, line.from)) {
               if (w.to < from || w.from > to) continue;
               if (this.typingAt >= w.from && this.typingAt <= w.to) continue;
               if (skips.some(([a, b]) => w.from < b && w.to > a)) continue;
@@ -355,95 +363,18 @@
         });
         return after || first;
       }
-      openPopup(range) {
-        this.closePopup();
-        if (!range) return false;
-        const view = this.view;
-        const word = view.state.sliceDoc(range.from, range.to);
-        const sugs = suggest(word, 5);
-        const coords = view.coordsAtPos(range.from);
-        if (!coords) return false;
-        const box = document.createElement('div');
-        box.className = 'cm-spell-popup';
-        box.setAttribute('role', 'menu');
-        const head = document.createElement('div');
-        head.className = 'cm-spell-header';
-        head.textContent = word;
-        box.appendChild(head);
-        const items = [];
-        const add = (label, cls, fn) => {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'cm-spell-item' + (cls ? ' ' + cls : '');
-          b.textContent = label;
-          b.addEventListener('mousedown', e => { e.preventDefault(); fn(); });
-          box.appendChild(b);
-          items.push({ el: b, fn });
-        };
-        const replace = s => {
-          this.closePopup();
-          view.dispatch({ changes: { from: range.from, to: range.to, insert: s },
-            selection: { anchor: range.from + s.length }, userEvent: 'input.spell' });
-          view.focus();
-        };
-        if (sugs.length) sugs.forEach(s => add(s, 'cm-spell-sug', () => replace(s)));
-        else {
-          const none = document.createElement('div');
-          none.className = 'cm-spell-none';
-          none.textContent = 'no suggestions';
-          box.appendChild(none);
-        }
-        const sep = document.createElement('div');
-        sep.className = 'cm-spell-sep';
-        box.appendChild(sep);
-        const lw = word.toLowerCase().replace(/’/g, "'");
-        add('add to dictionary', 'cm-spell-action', () => {
-          userWords.add(lw); saveUserWords(); this.closePopup(); refreshAll(); view.focus();
-        });
-        add('ignore', 'cm-spell-action', () => {
-          ignored.add(lw); this.closePopup(); refreshAll(); view.focus();
-        });
-        document.body.appendChild(box);
-        // Below the word; flip above if it would run off the bottom.
-        const bw = box.offsetWidth, bh = box.offsetHeight;
-        let left = Math.max(8, Math.min(coords.left - 6, window.innerWidth - bw - 8));
-        let top = coords.bottom + 6;
-        if (top + bh > window.innerHeight - 8) top = Math.max(8, coords.top - bh - 6);
-        box.style.left = left + 'px';
-        box.style.top = top + 'px';
-        this.popup = { box, items, sel: -1 };
-        this.onDocDown = e => { if (!box.contains(e.target)) this.closePopup(); };
-        document.addEventListener('mousedown', this.onDocDown, true);
-        this.onScroll = () => this.closePopup();
-        window.addEventListener('scroll', this.onScroll, true);
-        window.addEventListener('resize', this.onScroll);
-        return true;
-      }
-      closePopup() {
-        if (!this.popup) return;
-        this.popup.box.remove();
-        this.popup = null;
-        document.removeEventListener('mousedown', this.onDocDown, true);
-        window.removeEventListener('scroll', this.onScroll, true);
-        window.removeEventListener('resize', this.onScroll);
-      }
-      moveSel(d) {
-        const p = this.popup;
-        if (p.sel >= 0) p.items[p.sel].el.classList.remove('cm-spell-active');
-        p.sel = (p.sel + d + p.items.length) % p.items.length;
-        p.items[p.sel].el.classList.add('cm-spell-active');
-      }
-      destroy() { clearTimeout(this.pendingOpen); this.closePopup(); views.delete(this.view); }
+      destroy() { clearTimeout(this.pendingOpen); views.delete(this.view); }
     }, {
       decorations: v => v.decorations,
       eventHandlers: {
-        // A second click cancels a pending popup, so double-click is left to
-        // the app's own word menu (define / synonyms) without a flash.
+        // A second click cancels the pending single-click menu: a double-click
+        // opens the same menu through the app's own handler.
         mousedown(e, view) {
           const p = view.plugin(plugin);
           if (p && p.pendingOpen) { clearTimeout(p.pendingOpen); p.pendingOpen = null; }
         },
         mouseup(e, view) {
+          if (!opts.onMenu) return;
           if (e.button !== 0 || e.detail > 1 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
           const p = view.plugin(plugin);
           if (!p) return;
@@ -455,32 +386,23 @@
             p.pendingOpen = null;
             if (!view.state.selection.main.empty) return;
             const r = p.markAt(pos);
-            if (r) p.openPopup(r);
+            if (r) opts.onMenu(view, r);
           }, 250);
         }
       }
     });
 
-    // No Prec in the bundle: put this extension first so these keys win.
     const keys = keymap.of([
       { key: 'Mod-;', run: view => {
         const p = view.plugin(plugin);
-        if (!p || !enabled) return false;
-        if (p.popup) { p.closePopup(); return true; }
+        if (!p || !enabled || !opts.onMenu) return false;
         const head = view.state.selection.main.head;
-        return p.openPopup(p.markAt(head) || p.nextMark(head));
-      }},
-      { key: 'ArrowDown', run: v => { const p = v.plugin(plugin); if (!p || !p.popup) return false; p.moveSel(1); return true; } },
-      { key: 'ArrowUp', run: v => { const p = v.plugin(plugin); if (!p || !p.popup) return false; p.moveSel(-1); return true; } },
-      { key: 'Enter', run: v => {
-        const p = v.plugin(plugin);
-        if (!p || !p.popup || p.popup.sel < 0) return false;
-        p.popup.items[p.popup.sel].fn(); return true;
-      }},
-      { key: 'Escape', run: v => { const p = v.plugin(plugin); if (!p || !p.popup) return false; p.closePopup(); return true; } }
+        const r = p.markAt(head) || p.nextMark(head);
+        if (r) opts.onMenu(view, r);
+        return true;
+      }}
     ]);
 
-    // Plain stylesheet: the popup lives outside the editor DOM.
     if (!document.getElementById('cm-spell-style')) {
       const st = document.createElement('style');
       st.id = 'cm-spell-style';
@@ -488,38 +410,42 @@
       st.textContent =
         '.cm-content .cm-misspelled,.cm-line .cm-misspelled{text-decoration-line:underline!important;' +
         'text-decoration-style:wavy!important;text-decoration-color:rgba(224,96,96,.8)!important;' +
-        'text-decoration-thickness:1px!important;text-underline-offset:3px;text-decoration-skip-ink:none}' +
-        // Matches the apps' double-click word menu (#word-menu / .wm-*).
-        '.cm-spell-popup{position:fixed;z-index:10000;min-width:160px;max-width:280px;padding:4px 0;' +
-        'background:var(--surface,#fff);border:1px solid var(--border,rgba(128,128,128,.3));border-radius:8px;' +
-        'box-shadow:0 4px 20px rgba(0,0,0,.3);font-family:"JetBrains Mono",monospace;font-size:11px}' +
-        '.cm-spell-header{padding:6px 12px 5px;font-size:10px;color:var(--accent,#888);opacity:.9;font-weight:600;' +
-        'border-bottom:1px solid var(--border,rgba(128,128,128,.3))}' +
-        '.cm-spell-item{display:block;width:100%;text-align:left;padding:6px 12px;cursor:pointer;color:var(--text,#222);' +
-        'opacity:.75;background:none;border:none;font-family:"JetBrains Mono",monospace;font-size:11px;' +
-        'transition:opacity .1s,background .1s}' +
-        '.cm-spell-item:hover,.cm-spell-item.cm-spell-active{opacity:1;background:var(--border,rgba(128,128,128,.18))}' +
-        '.cm-spell-none{padding:6px 12px;color:var(--muted,#888);font-size:10px}' +
-        '.cm-spell-sep{border-top:1px solid var(--border,rgba(128,128,128,.3));margin:2px 0;opacity:.4}';
+        'text-decoration-thickness:1px!important;text-underline-offset:3px;text-decoration-skip-ink:none}';
       document.head.appendChild(st);
     }
 
     api.setEnabled = function (view, on) {
       enabled = !!on;
       const p = view && view.plugin(plugin);
-      if (p) { if (!on) p.closePopup(); if (on) p.ensureLoaded(); }
+      if (p && on) p.ensureLoaded();
       refreshAll();
     };
+    api.isEnabled = () => enabled && !!WORDS;
+    // Misspelled = spellcheck on, list loaded, and the word isn't known.
+    api.isMisspelled = word => enabled && !!WORDS && !isCorrect(word);
+    api.markAt = (view, pos) => { const p = view.plugin(plugin); return p ? p.markAt(pos) : null; };
+    api.isSkipped = skipped;
+    api.addWord = word => { userWords.add(norm(word)); saveUserWords(); refreshAll(); };
+    api.ignoreWord = word => { ignored.add(norm(word)); refreshAll(); };
     return [plugin, keys];
   }
+
+  function norm(w) { return w.toLowerCase().replace(/’/g, "'"); }
 
   const api = {
     extension,
     setEnabled() {},
+    isEnabled: () => false,
+    isMisspelled: () => false,
+    markAt: () => null,
+    isSkipped: () => false,
+    addWord() {},
+    ignoreWord() {},
+    suggest,
+    matchCase,
     // Exposed for testing.
     _parse: t => { WORDS = parseWords(t); buildIndex(); },
     isCorrect: w => !!WORDS && isCorrect(w),
-    suggest,
     wordsIn: (t, o) => [...wordsIn(t, o || 0)]
   };
   root.Spell = api;

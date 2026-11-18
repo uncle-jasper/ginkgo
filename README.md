@@ -45,15 +45,25 @@ Placeholders use the entry's own date, so inserting a template into an older ent
 - Templates are included in **export all (.zip)**, the daily Dropbox backups and the decrypted export, as `ginkgo-templates.json`. Restoring a backup brings them back, unless the templates on your device are newer.
 - Templates sync as one file (`.ginkgo-templates.json`) in your Ginkgo Dropbox folder, encrypted if sync encryption is on. If two devices edit templates before syncing, the most recent edit wins.
 
-## Spellcheck
+## Spellcheck and the word menu
 
-Ginkgo has its own spellchecker, so suggestions are the same on Mac, Windows and Linux and nothing leaves your device.
+One menu covers spelling, definitions and synonyms.
 
-- Misspelled words get a wavy red underline. Click one to see suggestions, then click a suggestion to replace the word.
-- **Ctrl+;** (**Cmd+;** on Mac) opens suggestions for the next misspelled word from your cursor. Use the arrow keys and Enter to pick one, or Esc to close.
+**Opening it**
+- **Double-click any word.**
+- **Click a word with a wavy red underline** (a misspelling).
+- **Ctrl+;** (**Cmd+;** on Mac) opens it for the next misspelled word from your cursor.
+- Arrow keys and Enter pick an item. Esc, or any other key, closes it.
+
+**What it shows**
+- **Misspelled word:** up to five suggestions, **add to dictionary** and **ignore**. If the same misspelling appears more than once, each suggestion has an **all** button that fixes every one at once, keeping each one's capital letters.
+- **Correctly spelled word:** how many times it appears in the entry, **define** and **synonyms**.
+
+**Good to know**
+- Spellcheck works offline and nothing leaves your device. Define and synonyms look words up online.
 - **add to dictionary** remembers a word (a name, a place, a brand) on this device. **ignore** skips it until you reload.
-- The word you're typing isn't flagged until you move past it.
-- Links, code and other markdown syntax aren't checked.
-- Turn it off under **settings → spellcheck**.
+- The word you're typing isn't flagged until you move past it. Links, code and other markdown syntax aren't checked.
+- Counts are whole words with capitalisation ignored: "week's" counts toward "week", and "don't" counts as itself.
+- Turn spellcheck off under **settings → spellcheck**. Double-click still opens define and synonyms.
 
-The word list (`spell-words.txt`) is the Hunspell US English dictionary plus common modern words. It downloads once (about 300 KB) and then works offline.
+The word list (`spell-words.txt`) is the Hunspell US English dictionary plus common modern words. It downloads once (about 300 KB).

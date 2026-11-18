@@ -991,7 +991,22 @@
     font-size: 11px;
     transition: opacity 0.1s, background 0.1s;
   }
-  .wm-item:hover { opacity: 1; background: var(--border); }
+  .wm-item:hover, .wm-item.wm-active { opacity: 1; background: var(--border); }
+  .wm-sug-row { display: flex; }
+  .wm-sug-row .wm-item { flex: 1; min-width: 0; }
+  .wm-all {
+    background: none;
+    border: none;
+    padding: 6px 12px;
+    cursor: pointer;
+    color: var(--muted);
+    opacity: 0.6;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    transition: opacity 0.1s, background 0.1s;
+  }
+  .wm-all:hover { opacity: 1; color: var(--text); background: var(--border); }
+  .wm-none { padding: 6px 12px; color: var(--muted); font-size: 10px; opacity: 0.8; }
   .wm-divider { border: none; border-top: 1px solid var(--border); margin: 2px 0; opacity: 0.4; }
   .wm-result {
     padding: 8px 12px;
@@ -1955,7 +1970,7 @@
     <p class="about-sub">A Markdown Editor</p>
     <p class="about-credit">Vibe coded by Dan</p>
     <p class="about-copy">© 2026</p>
-    <p class="about-version"><span style="font-size:13px;">v1.8.1</span><span style="font-size:11px; opacity:0.35; margin: 0 5px;">·</span><a href="#" style="font-size:11px; color:var(--accent); opacity:0.5; text-decoration:none;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.5'" onclick="document.getElementById('about-overlay').style.display='none'; openReadmeTab(); return false;">readme</a></p>
+    <p class="about-version"><span style="font-size:13px;">v1.9.0</span><span style="font-size:11px; opacity:0.35; margin: 0 5px;">·</span><a href="#" style="font-size:11px; color:var(--accent); opacity:0.5; text-decoration:none;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.5'" onclick="document.getElementById('about-overlay').style.display='none'; openReadmeTab(); return false;">readme</a></p>
     <p style="margin-top:4px; font-size:11px;"><a href="https://buymeacoffee.com/dandanmian" target="_blank" style="color:var(--accent); opacity:0.7; text-decoration:none;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">☕ buy me a coffee</a></p>
   </div>
 </div>
@@ -3056,6 +3071,7 @@ function spellExtension() {
     wordsUrl: 'spell-words.txt',
     storageKey: 'ginkgo-spell-words',
     enabled: document.getElementById('chk-spellcheck').checked,
+    onMenu: (v, range) => openWordMenu(v, range),
   });
 }
 function nativeSpellcheckAttr(on) {
@@ -3065,7 +3081,7 @@ const readOnlyCompartment   = new Compartment();
 
 function buildExtensions() {
   return [
-    spellExtension(),   // first, so its keys (Esc/Enter/arrows in the popup) win
+    spellExtension(),   // first, so its Ctrl/Cmd+; wins
     history(),
     drawSelection({ cursorBlinkRate: 1000 }),
     dropCursor(),
@@ -4552,16 +4568,30 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 // ── Word menu (double-click) ───────────────────────────────────────────
+// The word at pos: an underlined (misspelled) word as flagged, otherwise
+// letters plus inner apostrophes, so "don't" stays one word.
+function wordRangeAt(state, pos) {
+  const mark = HAS_SPELL ? Spell.markAt(view, pos) : null;
+  if (mark) return mark;
+  const line = state.doc.lineAt(pos);
+  const re = /[A-Za-z\u00C0-\u024F]+(?:['\u2019][A-Za-z\u00C0-\u024F]+)*/g;
+  let m;
+  while ((m = re.exec(line.text))) {
+    const from = line.from + m.index, to = from + m[0].length;
+    if (pos >= from && pos <= to) return { from, to };
+  }
+  return null;
+}
+
 document.getElementById('editor-cm').addEventListener('dblclick', e => {
   if (!view) return;
-  const sel = view.state.sliceDoc(
-    view.state.selection.main.from,
-    view.state.selection.main.to
-  ).trim().toLowerCase();
-  if (!sel || sel.includes(' ')) return;
-  const text  = getContent().toLowerCase();
-  const count = (text.match(new RegExp('\\b' + sel.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'g')) || []).length;
-  showWordMenu(e.clientX, e.clientY, sel, count);
+  // CodeMirror selects the word on double-click; nothing selected (or a
+  // selection with spaces) means it wasn't on plain text.
+  const sel = view.state.selection.main;
+  if (sel.empty || /\s/.test(view.state.sliceDoc(sel.from, sel.to))) return;
+  const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+  const r = wordRangeAt(view.state, pos == null ? sel.from : pos);
+  if (r) openWordMenu(view, r);
 });
 
 // ── Tabs ──────────────────────────────────────────────────────────────
@@ -5212,33 +5242,126 @@ document.getElementById('about-overlay').addEventListener('click', function(e) {
 });
 
 
-// ── Right-click word menu ─────────────────────────────────────────────
+// ── Word menu ──────────────────────────────────────────────────────────
+// One menu for every word. Misspelled: suggestions (each with "all" when the
+// same misspelling appears more than once), add to dictionary, ignore.
+// Spelled right: occurrence count, define, synonyms.
+// Opens on double-click, on a single click of an underlined word, or with
+// Ctrl/Cmd+; (next misspelled word), just below the word.
 const wordMenu = document.getElementById('word-menu');
+let wordMenuState = null;   // { items: [button], sel }
 
-function hideWordMenu() { wordMenu.style.display = 'none'; }
+function hideWordMenu() { wordMenu.style.display = 'none'; wordMenuState = null; }
 
-function showWordMenu(x, y, word, count) {
-  const countLine = (count !== undefined && count > 0)
-    ? `<div class="wm-count">${count} occurrence${count !== 1 ? 's' : ''}</div>`
-    : '';
-  wordMenu.innerHTML = `
-    <div class="wm-header">${word}</div>
-    ${countLine}
-    <button class="wm-item" id="wm-define">define</button>
-    <button class="wm-item" id="wm-synonyms">synonyms</button>
-    <div class="wm-result" id="wm-result"></div>
-  `;
-  document.getElementById('wm-define').addEventListener('click', () => fetchWordData(word, 'define'));
-  document.getElementById('wm-synonyms').addEventListener('click', () => fetchWordData(word, 'synonyms'));
-
-  wordMenu.style.left = x + 'px';
-  wordMenu.style.top = y + 'px';
-  wordMenu.style.display = 'block';
-
-  const rect = wordMenu.getBoundingClientRect();
-  if (rect.right > window.innerWidth - 8)  wordMenu.style.left = (x - rect.width) + 'px';
-  if (rect.bottom > window.innerHeight - 8) wordMenu.style.top = (y - rect.height) + 'px';
+// Whole-word matches, capitalisation ignored. "week's" counts as "week";
+// "don" inside "don't" doesn't count.
+function findWordInDoc(state, word, checkableOnly) {
+  const pat = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/['\u2019]/g, "['\u2019]");
+  const re = new RegExp("(?<![\\p{L}\\p{N}])(?<!\\p{L}['\u2019])" + pat +
+    "(?![\\p{L}\\p{N}])(?!['\u2019](?![sS](?![\\p{L}\\p{N}]))\\p{L})", 'giu');
+  const hits = [];
+  for (const m of state.doc.toString().matchAll(re)) {
+    const from = m.index, to = from + m[0].length;
+    if (checkableOnly && HAS_SPELL && Spell.isSkipped(state, from, to)) continue;
+    hits.push({ from, to });
+  }
+  return hits;
 }
+
+function replaceWords(v, ranges, suggestion, cursorRange) {
+  const changes = ranges.map(r => ({ from: r.from, to: r.to,
+    // Each copy keeps its own capitalisation ("Nurves" → "Nerves", "nurves" → "nerves").
+    insert: Spell.matchCase(v.state.sliceDoc(r.from, r.to), suggestion.toLowerCase()) }));
+  const anchor = v.state.changes(changes).mapPos(cursorRange.to, 1);
+  hideWordMenu();
+  v.dispatch({ changes, selection: { anchor }, userEvent: 'input.spell' });
+  v.focus();
+}
+
+function openWordMenu(v, range) {
+  const state = v.state;
+  const word = state.sliceDoc(range.from, range.to);
+  const misspelled = HAS_SPELL && Spell.isMisspelled(word);
+  const hits = findWordInDoc(state, word, misspelled);
+  const count = Math.max(hits.length, 1);
+  const items = [];
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const addItem = (parent, label, fn, cls) => {
+    const b = el('button', cls || 'wm-item', label);
+    b.type = 'button';
+    b.addEventListener('mousedown', e => e.preventDefault());   // keep editor focus
+    b.addEventListener('click', fn);
+    parent.appendChild(b);
+    if (!cls) items.push(b);
+    return b;
+  };
+
+  wordMenu.innerHTML = '';
+  wordMenu.appendChild(el('div', 'wm-header', word));
+  if (!misspelled || count > 1) {
+    wordMenu.appendChild(el('div', 'wm-count', `${count} occurrence${count !== 1 ? 's' : ''}`));
+  }
+  if (misspelled) {
+    const sugs = Spell.suggest(word, 5);
+    if (!sugs.length) wordMenu.appendChild(el('div', 'wm-none', 'no suggestions'));
+    for (const s of sugs) {
+      const row = el('div', 'wm-sug-row');
+      addItem(row, s, () => replaceWords(v, [range], s, range));
+      if (count > 1) {
+        const all = addItem(row, 'all', () => replaceWords(v, hits, s, range), 'wm-all');
+        all.title = `replace all ${count} with “${s}”`;
+      }
+      wordMenu.appendChild(row);
+    }
+    wordMenu.appendChild(el('hr', 'wm-divider'));
+    addItem(wordMenu, 'add to dictionary', () => { Spell.addWord(word); hideWordMenu(); v.focus(); });
+    addItem(wordMenu, 'ignore', () => { Spell.ignoreWord(word); hideWordMenu(); v.focus(); });
+  } else {
+    const lookup = word.toLowerCase().replace(/\u2019/g, "'");
+    addItem(wordMenu, 'define', () => fetchWordData(lookup, 'define'));
+    addItem(wordMenu, 'synonyms', () => fetchWordData(lookup, 'synonyms'));
+    const result = el('div', 'wm-result');
+    result.id = 'wm-result';
+    wordMenu.appendChild(result);
+  }
+
+  // Just below the word; flip above it if there's no room.
+  const c = v.coordsAtPos(range.from) || { left: 0, top: 0, bottom: 0 };
+  wordMenu.style.display = 'block';
+  const w = wordMenu.offsetWidth, h = wordMenu.offsetHeight;
+  let top = c.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, c.top - h - 6);
+  wordMenu.style.left = Math.max(8, Math.min(c.left - 12, window.innerWidth - w - 8)) + 'px';
+  wordMenu.style.top = top + 'px';
+  wordMenuState = { items, sel: -1 };
+}
+
+// Arrow keys and Enter pick from the menu; any other key closes it and
+// carries on as normal (Esc is handled below).
+document.addEventListener('keydown', e => {
+  const st = wordMenuState;
+  if (!st || wordMenu.style.display !== 'block') return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (!st.items.length) return;
+    if (st.sel >= 0) st.items[st.sel].classList.remove('wm-active');
+    st.sel = (st.sel + (e.key === 'ArrowDown' ? 1 : -1) + st.items.length) % st.items.length;
+    st.items[st.sel].classList.add('wm-active');
+    e.preventDefault(); e.stopPropagation();
+  } else if (e.key === 'Enter' && st.sel >= 0) {
+    st.items[st.sel].click();
+    e.preventDefault(); e.stopPropagation();
+  } else if (!['Escape', 'Shift', 'Meta', 'Control', 'Alt', 'CapsLock'].includes(e.key)) {
+    hideWordMenu();
+  }
+}, true);
+window.addEventListener('scroll', e => {
+  if (!wordMenu.contains(e.target)) hideWordMenu();
+}, true);
 
 async function fetchWordData(word, mode) {
   const result = document.getElementById('wm-result');
@@ -5611,13 +5734,20 @@ SAVE & EXPORT
 
 WORD MENU
 
-  Double-click any word to open the word menu: Define, Synonyms,
-  and occurrence count. Powered by the Free Dictionary API.
-  Requires internet for definitions and synonyms.
+  Double-click any word to open the word menu:
 
-  Single-click a word with a wavy underline for spelling
-  suggestions (or Ctrl/Cmd+; for the next one). The spellchecker
-  works offline. Turn it off in settings → spellcheck.
+    spelled right  — occurrence count, define, synonyms
+    misspelled     — up to five suggestions, add to dictionary, ignore
+
+  Single-click a word with a wavy underline to open the same menu,
+  or press Ctrl/Cmd+; for the next misspelled word. Arrow keys and
+  Enter pick an item; Esc closes it.
+
+  When a misspelling appears more than once, each suggestion has an
+  "all" button that fixes every one of them at once.
+
+  Spellcheck works offline (turn it off in settings → spellcheck).
+  Define and synonyms use the Free Dictionary API and need internet.
 
 
 TABS
