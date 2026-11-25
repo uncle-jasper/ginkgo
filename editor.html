@@ -733,6 +733,17 @@
   body[data-theme="terminal"].doogie-journal .tree-cursor-shape.is-underline { background-color: var(--text); box-shadow: none; }
 
   /* ── Selection visibility fixes for themes with dark accent colors ── */
+  /* ── Rain (Downpour: darker sky + falling streaks) ── */
+  body[data-theme="rain"]     { --bg:#192125; --surface:#1f282c; --text:#c3cfd1; --accent:#7fa6b0; --muted:#5b6f74; --border:#283438; }
+  body[data-theme="rain"].downpour-on { --bg:#0e1517; --surface:#131b1e; --text:#b0c3c5; --accent:#66a0a8; --muted:#42585c; --border:#1a2729; }
+  body[data-theme="rain"] .cm-selectionBackground,
+  body[data-theme="rain"] .cm-focused .cm-selectionBackground { background: rgba(127,166,176,0.24) !important; opacity: 1; }
+  body[data-theme="rain"] ::selection { background: rgba(127,166,176,0.24); }
+  #rain-canvas { display: none; position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
+  body[data-theme="rain"].downpour-on #rain-canvas { display: block; }
+  body[data-theme="rain"].downpour-on #editor-scroll,
+  body[data-theme="rain"].downpour-on #preview { background: transparent; }
+
   body[data-theme="dark"] .cm-selectionBackground,
   body[data-theme="dark"] .cm-focused .cm-selectionBackground { background: rgba(100,120,220,0.4) !important; opacity: 1; }
   body[data-theme="dark"] ::selection { background: rgba(100,120,220,0.4); }
@@ -880,6 +891,8 @@
 
   /* ── Settings CRT row (terminal only) ── */
   #settings-crt-row { display: none; margin-top: 8px; }
+  #settings-downpour-row { display: none; margin-top: 8px; }
+  #settings-falling-row { display: none; margin-top: 4px; padding-left: 18px; }
 
   /* ── CM6 search panel ── */
   .cm-panels { background: var(--surface) !important; border: none !important; }
@@ -1498,6 +1511,7 @@
 </style>
 </head>
 <body data-theme="parchment">
+<canvas id="rain-canvas" aria-hidden="true"></canvas>
 
 <div id="header"><div id="toolbar">
   <div id="tab-list-group">
@@ -1537,6 +1551,7 @@
       <option value="moss">moss</option>
       <option value="slate">slate</option>
       <option value="moonwalker">moonwalker</option>
+      <option value="rain">rain</option>
       <option value="terminal">terminal</option>
       <option value="custom">custom…</option>
       <option value="custom2">custom 2…</option>
@@ -1556,6 +1571,7 @@
         <div class="settings-theme-item" data-value="moss"><span class="theme-swatch" style="background:#1e2420"></span>moss</div>
         <div class="settings-theme-item" data-value="slate"><span class="theme-swatch" style="background:#1c2333"></span>slate</div>
         <div class="settings-theme-item" data-value="moonwalker"><span class="theme-swatch" style="background:#000000;outline:1px solid #6cb5f8"></span>moonwalker</div>
+        <div class="settings-theme-item" data-value="rain"><span class="theme-swatch" style="background:#192125;outline:1px solid #7fa6b0"></span>rain</div>
         <div class="settings-theme-item" data-value="terminal"><span class="theme-swatch" style="background:#0a0a0a;outline:1px solid #1a3a1a"></span>terminal</div>
         <div class="settings-theme-item" data-value="custom"><span class="theme-swatch theme-swatch-custom"></span>custom…</div>
         <div class="settings-theme-item" data-value="custom2"><span class="theme-swatch theme-swatch-custom"></span>custom 2…</div>
@@ -1564,6 +1580,14 @@
       <div id="settings-crt-row" class="settings-row">
         <input type="checkbox" id="chk-crt">
         <label for="chk-crt">CRT mode</label>
+      </div>
+      <div id="settings-downpour-row" class="settings-row">
+        <input type="checkbox" id="chk-downpour">
+        <label for="chk-downpour">downpour</label>
+      </div>
+      <div id="settings-falling-row" class="settings-row">
+        <input type="checkbox" id="chk-falling" checked>
+        <label for="chk-falling">falling rain</label>
       </div>
       <input id="custom-theme-file" type="file" accept=".json,application/json" style="display:none">
       <div id="custom-colors" style="display:none; margin-top:10px;">
@@ -4327,6 +4351,10 @@ function syncThemeUI() {
   // CRT row: only show for terminal theme
   const crtRow = document.getElementById('settings-crt-row');
   crtRow.style.display = (val === 'terminal') ? 'flex' : 'none';
+  document.getElementById('settings-downpour-row').style.display = (val === 'rain') ? 'flex' : 'none';
+  document.getElementById('settings-falling-row').style.display =
+    (val === 'rain' && document.body.classList.contains('downpour-on')) ? 'flex' : 'none';
+  updateRain();
   // Custom colors panels
   CUSTOM_SLOTS.forEach(slot => {
     document.getElementById('custom-colors' + slot.sfx).style.display = (val === slot.key) ? 'block' : 'none';
@@ -4389,6 +4417,131 @@ document.getElementById('chk-crt').addEventListener('change', function() {
     document.body.classList.remove('doogie-journal');
   }
   saveSettings();
+});
+
+document.getElementById('chk-downpour').addEventListener('change', function() {
+  document.body.classList.toggle('downpour-on', this.checked);
+  syncThemeUI();
+  saveSettings();
+});
+
+document.getElementById('chk-falling').addEventListener('change', function() {
+  document.body.classList.toggle('rain-still', !this.checked);
+  updateRain();
+  saveSettings();
+});
+
+// ── Downpour: rain streaks behind the page (rain theme only) ──────────
+// When the rain stops, drops already falling finish their fall; when it
+// starts again, new drops come in from the top.
+const rain = { canvas: document.getElementById('rain-canvas'), drops: [], w: 0, h: 0, running: false, easing: false, frame: 0 };
+rain.ctx = rain.canvas.getContext('2d');
+function rainShown() {
+  return document.body.dataset.theme === 'rain' && document.body.classList.contains('downpour-on');
+}
+function rainFalling() {
+  return rainShown() && !document.body.classList.contains('rain-still');
+}
+function rainDrop(anywhere) {
+  const z = Math.random();
+  return {
+    x: Math.random() * (rain.w + 60) - 30,
+    y: anywhere ? Math.random() * rain.h : -20 - Math.random() * rain.h * 0.6,
+    len: 14 + z * 22, v: 7 + z * 9, a: 0.05 + z * 0.09
+  };
+}
+function rainCount() { return Math.round((rain.w * rain.h) / 2600); }
+function rainSize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  rain.w = window.innerWidth; rain.h = window.innerHeight;
+  rain.canvas.width = rain.w * dpr; rain.canvas.height = rain.h * dpr;
+  rain.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function rainFill(anywhere) {
+  rain.drops = [];
+  for (let i = 0, n = rainCount(); i < n; i++) rain.drops.push(rainDrop(anywhere));
+}
+function rainDraw() {
+  const ctx = rain.ctx;
+  ctx.clearRect(0, 0, rain.w, rain.h);
+  ctx.lineWidth = 1; ctx.lineCap = 'round';
+  for (const d of rain.drops) {
+    if (!d) continue;
+    ctx.strokeStyle = 'rgba(145,190,195,' + d.a + ')';
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x - d.len * 0.12, d.y + d.len);
+    ctx.stroke();
+  }
+}
+function rainStep() {
+  if (!rain.running) return;
+  let left = 0;
+  for (let i = 0; i < rain.drops.length; i++) {
+    const d = rain.drops[i];
+    if (!d) continue;
+    d.y += d.v; d.x -= d.v * 0.12;
+    if (d.y > rain.h + 20) rain.drops[i] = rain.easing ? null : rainDrop(false);
+    if (rain.drops[i]) left++;
+  }
+  rainDraw();
+  if (rain.easing && !left) { rain.running = false; rain.drops = []; return; }
+  rain.frame = requestAnimationFrame(rainStep);
+}
+let rainBooted = false;
+function updateRain() {
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!rainShown() || document.hidden) {
+    rain.running = false; cancelAnimationFrame(rain.frame);
+    if (!rainShown()) { rain.drops = []; rainBooted = false; }
+    return;
+  }
+  if (!rain.w) rainSize();
+  if (reduce) {
+    rain.running = false; cancelAnimationFrame(rain.frame);
+    if (rainFalling()) rainFill(true); else rain.drops = [];
+    rainDraw();
+    return;
+  }
+  if (rainFalling()) {
+    rain.easing = false;
+    if (!rain.drops.some(Boolean)) rainFill(!rainBooted);   // first appearance: already raining; later: starts from the top
+    else rain.drops = rain.drops.map(d => d || rainDrop(false));
+  } else {
+    rain.easing = true;
+    if (!rainBooted) rain.drops = [];
+  }
+  rainBooted = true;
+  if (!rain.running && rain.drops.some(Boolean)) { rain.running = true; rain.frame = requestAnimationFrame(rainStep); }
+  if (!rain.drops.some(Boolean)) rainDraw();
+}
+window.addEventListener('resize', () => { if (rainShown()) { rainSize(); if (rainFalling()) rainFill(true); rainDraw(); } });
+document.addEventListener('visibilitychange', updateRain);
+
+// ── umbre11a: stop or start the falling rain (rain theme, downpour on) ─
+const UMBRELLA = ['u','m','b','r','e','1','1','a'];
+let umbrellaPos = 0;
+document.addEventListener('keyup', e => {
+  if (!rainShown()) { umbrellaPos = 0; return; }
+  if (e.key.length !== 1) return;
+  const key = e.key.toLowerCase();
+  const cur = (view && view.hasFocus) ? view.state.selection.main.from : -1;
+  const onBlankLine = cur >= 0 && view.state.doc.lineAt(cur).text.trim().length <= UMBRELLA.length;
+  if (!onBlankLine || key !== UMBRELLA[umbrellaPos]) { umbrellaPos = key === UMBRELLA[0] ? 1 : 0; return; }
+  if (++umbrellaPos < UMBRELLA.length) return;
+  umbrellaPos = 0;
+  const line = view.state.doc.lineAt(view.state.selection.main.from);
+  if (line.text.trim().toLowerCase() === 'umbre11a') {
+    view.dispatch({ changes: { from: line.from, to: line.to, insert: '' }, userEvent: 'delete' });
+  }
+  const chk = document.getElementById('chk-falling');
+  chk.checked = !chk.checked;
+  document.body.classList.toggle('rain-still', !chk.checked);
+  updateRain();
+  saveSettings();
+  if (document.getElementById('chk-welcome').checked) {
+    typeStatusMessage(chk.checked ? 'grab your umbrella.' : 'the rain has let up.');
+  }
 });
 
 let importSlot = null;   // the custom theme the file picker is filling
@@ -5014,6 +5167,8 @@ function saveSettings() {
       autohide:     autohideEnabled,
       showWelcome:  document.getElementById('chk-welcome').checked,
       crtEnabled:   document.body.classList.contains('crt-on'),
+      downpour:     document.body.classList.contains('downpour-on'),
+      rainStill:    document.body.classList.contains('rain-still'),
       scrollSynced: scrollSynced,
       customBg:      document.getElementById('color-bg').value,
       customText:    document.getElementById('color-text').value,
@@ -5114,6 +5269,14 @@ function loadSettings() {
     if (s.crtEnabled) {
       document.body.classList.add('crt-on');
       document.getElementById('chk-crt').checked = true;
+    }
+    if (s.downpour) {
+      document.body.classList.add('downpour-on');
+      document.getElementById('chk-downpour').checked = true;
+    }
+    if (s.rainStill) {
+      document.body.classList.add('rain-still');
+      document.getElementById('chk-falling').checked = false;
     }
     if (s.scrollSynced !== undefined) {
       scrollSynced = s.scrollSynced;
@@ -5784,6 +5947,10 @@ THEMES & FONTS
   Three custom themes: set your own background, text and accent,
   give each a name and a line, block or underline cursor, and
   export or import them as files to share.
+
+  In rain theme, downpour darkens the sky and adds falling rain
+  behind the page. It pauses when the app is in the background.
+  Untick "falling rain" to keep the colors and stop the rain.
 
   In terminal theme, CRT mode adds scanlines, a vignette, subtle
   screen flicker, and replaces the cursor with a glowing block.
