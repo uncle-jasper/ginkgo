@@ -956,7 +956,10 @@ const THEME_PALETTE = {
   gameboy:   { bg: '#b5bd8e', surface: '#a6ae80', text: '#33422a', accent: '#5f6f47', muted: '#7c8760', border: '#96a072' },
   moonwalker:{ bg: '#000000', surface: '#0b0f14', text: '#6cb5f8', accent: '#0127dd', muted: '#1a3fae', border: '#0d1a4a' },
   terminal:  { bg: '#0a0a0a', surface: '#0f0f0f', text: '#22cc22', accent: '#0a5c0a', muted: '#1a7a1a', border: '#1a3a1a' },
+  rain:      { bg: '#192125', surface: '#1f282c', text: '#c3cfd1', accent: '#7fa6b0', muted: '#5b6f74', border: '#283438' },
 };
+
+const DOWNPOUR_PALETTE = { bg: '#0e1517', surface: '#131b1e', text: '#b0c3c5', accent: '#66a0a8', muted: '#42585c', border: '#1a2729' };
 
 const AMBER_CRT_PALETTE = { text: '#ffb000', accent: '#7a4a00', muted: '#a06a00', border: '#3a2200' };
 const DOOGIE_JOURNAL_PALETTE = { bg: '#0000AA', surface: '#0000AA', text: '#EAEAEA', accent: '#00AAAA', muted: '#7575CA', border: '#2323B4' };
@@ -972,6 +975,7 @@ function applyTheme(settings) {
   }
   const isAmber = settings.theme === 'terminal' && !!settings.amberCrt;
   const isDoogie = settings.theme === 'terminal' && !isAmber && !!settings.doogieJournal;
+  if (settings.theme === 'rain' && settings.downpour) p = { ...p, ...DOWNPOUR_PALETTE };
   if (isAmber) p = { ...p, ...AMBER_CRT_PALETTE };
   else if (isDoogie) p = { ...p, ...DOOGIE_JOURNAL_PALETTE };
   const root = document.documentElement.style;
