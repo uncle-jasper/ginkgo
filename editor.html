@@ -4456,12 +4456,15 @@ document.getElementById('theme-label').addEventListener('click', () => {
   if (qs.classList.contains('open')) checkShelf();
 });
 
-document.addEventListener('click', e => {
-  const qs = document.getElementById('quick-settings');
-  if (!qs.classList.contains('open')) return;
-  if (!document.getElementById('theme-label').closest('.tool-group').contains(e.target)) {
-    qs.classList.remove('open');
-  }
+// Same pattern as #settings-overlay: only close when the click lands on the
+// dimmed backdrop itself, never on anything inside the box. This is what
+// #quick-settings needs now that it's hoisted out of the toolbar's DOM —
+// a containment check against its old anchor button no longer applies.
+document.getElementById('quick-settings').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('open');
+});
+document.getElementById('btn-quick-settings-close').addEventListener('click', () => {
+  document.getElementById('quick-settings').classList.remove('open');
 });
 
 document.addEventListener('keydown', e => {
@@ -6986,7 +6989,9 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'OPEN_PANEL') {
     if (justWriteActive) return;
     if (msg.panel === 'style') {
-      document.getElementById('quick-settings').classList.toggle('open');
+      const qs = document.getElementById('quick-settings');
+      qs.classList.toggle('open');
+      if (qs.classList.contains('open')) checkShelf();
     } else if (msg.panel === 'settings') {
       document.getElementById('settings-overlay').style.display = 'flex';
     } else if (msg.panel === 'shortcuts') {
