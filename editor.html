@@ -4582,6 +4582,7 @@ function applyPackTheme(pack, theme) {
 }
 
 function setSwitch(label, on) {
+  if (justWriteActive) return;
   const pack = findPack(packs.current.pack), theme = pack && TreePacks.findTheme(pack, packs.current.theme);
   if (!theme) return;
   const key = pack.id + '/' + theme.id;
@@ -4798,7 +4799,7 @@ function renderPacks() {
     const actions = [];
     if (e && TreePacks.newer(p.version, e.version)) actions.push(['update', b => installFromShelf(e, b, 'updated'), true]);
     else actions.push(['export', () => exportPack(p.id)]);
-    actions.push(['uninstall', () => { packsNote(uninstallPack(p.id)); renderPacks(); }]);
+    actions.push(['uninstall', () => { if (justWriteActive) return; packsNote(uninstallPack(p.id)); renderPacks(); }]);
     mine.append(packRow(p, { swatches: p.themes.map(t => t.colors.bg), actions }));
   }
   const shelf = document.getElementById('packs-shelf');
@@ -4819,6 +4820,7 @@ function renderPacks() {
   }
 }
 function installFromShelf(entry, button, done) {
+  if (justWriteActive) return;
   button.disabled = true;
   fetchShelfPack(entry).then(raw => {
     const r = installPack(raw);
@@ -4837,7 +4839,7 @@ document.getElementById('btn-pack-import').addEventListener('click', () => docum
 document.getElementById('pack-file').addEventListener('change', e => {
   const f = e.target.files[0];
   e.target.value = '';
-  if (!f) return;
+  if (!f || justWriteActive) return;
   f.text().then(raw => {
     const r = installPack(raw);
     if (!r.ok) { packsNote('not installed: ' + r.error, true); return; }
@@ -5894,6 +5896,7 @@ function activateJustWrite() {
   document.body.classList.add('just-write');
   document.getElementById('theme-select').disabled = true;
   lockCustomControls(true);
+  if (packsOpen()) closePacks();   // the look is locked: packs included
 
   const until = Date.now() + JW_MINUTES * 60 * 1000;
   try { localStorage.setItem(JW_KEY, JSON.stringify({ until, wordStart: justWriteWordStart, tabId: justWriteTabId })); } catch(e) {}
