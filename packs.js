@@ -264,6 +264,16 @@
   //   packTheme  that key's value for a theme from a pack file ('pack')
   //   backdropClass  class on root while something is drawn behind the
   //              page, so the app can make its panes see-through ('tp-backdrop')
+  //   parts      what this stage paints: 'colors' (CSS variables on root),
+  //              'css' (glow, sheen, selection) and 'layers' (particles,
+  //              light, overlay). All three unless given; the Obsidian plugin
+  //              paints colors and css once for the window, and layers in
+  //              each note.
+  //   varPrefix  prefix of the color variables ('--': --bg, --text…)
+  //   themeAttr  false to leave root's dataset alone
+  //   contained  layers fill the `layers` element instead of the window:
+  //              absolutely placed, sized to it. Layer elements carry the
+  //              class tp-layer (tp-behind or tp-front), for the app's CSS.
   //
   // stage.apply(theme, choices) shows a theme with the person's switch
   // choices; stage.clear() removes everything; stage.destroy() too, for good.
@@ -277,7 +287,10 @@
     const root = opts.root || doc.body;
     const layersIn = opts.layers || doc.body;
     const sel = Object.assign({}, DEFAULT_SELECTORS, opts.selectors || {});
-    const attr = opts.themeAttr || 'theme';
+    const attr = opts.themeAttr === false ? null : (opts.themeAttr || 'theme');
+    const parts = new Set(opts.parts || ['colors', 'css', 'layers']);
+    const prefix = opts.varPrefix || '--';
+    const contained = !!opts.contained;
     const packTheme = opts.packTheme || 'pack';
     const backdropClass = opts.backdropClass || 'tp-backdrop';
     const uid = 'tp' + (++stageCount);
@@ -287,15 +300,21 @@
       if (!styleEl) { styleEl = doc.createElement('style'); styleEl.id = uid + '-style'; doc.head.appendChild(styleEl); }
       styleEl.textContent = cssText;
     }
-    function layer(z, css) {
-      const el = doc.createElement('div');
-      el.className = uid + '-layer';
+    // z < 0: behind the page; otherwise in front of it.
+    function place(el, z, css) {
+      el.className = uid + '-layer tp-layer ' + (z < 0 ? 'tp-behind' : 'tp-front');
       el.setAttribute('aria-hidden', 'true');
-      el.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:${z};` + (css || '');
-      layersIn.appendChild(el);
+      // A canvas needs its size spelled out; a div fills its inset, which may reach past the edges (light streaks).
+      const size = el.tagName === 'CANVAS' ? 'width:100%;height:100%;' : '';
+      el.style.cssText = (contained
+        ? `position:absolute;inset:0;${size}pointer-events:none;z-index:${z < 0 ? 'auto' : 10};`
+        : `position:fixed;inset:0;${size}pointer-events:none;z-index:${z};`) + 'display:block;' + (css || '');
+      // Contained, a layer behind the page comes first, so the page paints over it.
+      if (contained && z < 0) layersIn.prepend(el); else layersIn.appendChild(el);
       layers.push(el);
       return el;
     }
+    const layer = (z, css) => place(doc.createElement('div'), z, css);
 
     function clearLook() {
       for (const k of setVars) root.style.removeProperty(k);
@@ -320,7 +339,7 @@
 
       if (theme.native) {
         // The app's own theme code draws it; only marks and class switches here.
-        root.dataset[attr] = theme.native.theme;
+        if (attr) root.dataset[attr] = theme.native.theme;
         const classes = theme.native.classes.slice();
         for (const e of on) if (e.type === 'native' && e.className) classes.push(e.className);
         for (const c of classes) { root.classList.add(c); setClasses.push(c); }
@@ -328,21 +347,24 @@
         return;
       }
 
-      root.dataset[attr] = packTheme;
-      const vars = cssVars(theme);
-      for (const k in vars) { root.style.setProperty(k, vars[k]); setVars.push(k); }
-      root.style.setProperty('color-scheme', theme.light ? 'light' : 'dark');
+      if (attr) root.dataset[attr] = packTheme;
+      if (parts.has('colors')) {
+        const vars = cssVars(theme);
+        for (const k in vars) { const name = prefix + k.slice(2); root.style.setProperty(name, vars[k]); setVars.push(name); }
+        root.style.setProperty('color-scheme', theme.light ? 'light' : 'dark');
+      }
 
       // Selectors are lists ("a, b"): each part gets its own ::selection.
       const each = (list, suffix) => list.split(',').map(x => x.trim() + suffix).join(', ');
-      const css = [`${each(sel.text, ' ::selection')}, ${each(sel.text, '::selection')} { background: var(--selection); }`];
+      const css = [`${each(sel.text, ' ::selection')}, ${each(sel.text, '::selection')} { background: var(${prefix}selection); }`];
       let behind = false, keep = [];
       on.forEach((e, i) => {
+        if (!parts.has(e.type === 'glow' || e.type === 'sheen' ? 'css' : 'layers')) return;
         if (e.type === 'particles') {
           behind = true;
           // Same theme and same effect: keep the rain falling across re-applies.
           const old = prevRains.find(r => r.theme.id === theme.id && r.index === i);
-          if (old) { old.setEffect(e, theme); old.start(); keep.push(old); layersIn.appendChild(old.canvas); layers.push(old.canvas); }
+          if (old) { old.setEffect(e, theme); old.start(); keep.push(old); place(old.canvas, -1); }
           else { const r = makeRain(e, theme, i); keep.push(r); r.start(); }
         } else if (e.type === 'light') {
           behind = true;
@@ -357,12 +379,12 @@
       });
       // Rain that is switched off finishes its fall; rain from another theme just stops.
       for (const r of prevRains) if (!keep.includes(r)) {
-        if (r.theme.id === theme.id) { r.ease(); keep.push(r); layersIn.appendChild(r.canvas); layers.push(r.canvas); behind = true; }
+        if (r.theme.id === theme.id) { r.ease(); keep.push(r); place(r.canvas, -1); behind = true; }
         else r.destroy();
       }
       rains = keep;
       if (behind) root.classList.add(backdropClass);
-      style(css.join('\n'));
+      if (parts.has('css')) style(css.join('\n'));
     }
 
     function stopRains(list, destroy) { for (const r of list) destroy ? r.destroy() : r.stop(); rains = []; }
@@ -370,12 +392,7 @@
     // particles ─ the same falling streaks as Tree's rain, drop for drop:
     // with the defaults and the same random numbers, the same picture.
     function makeRain(effect, theme, index) {
-      const canvas = doc.createElement('canvas');
-      canvas.className = uid + '-layer';
-      canvas.setAttribute('aria-hidden', 'true');
-      canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1;display:block;';
-      layersIn.appendChild(canvas);
-      layers.push(canvas);
+      const canvas = place(doc.createElement('canvas'), -1);
       const ctx = canvas.getContext('2d');
       const r = { canvas, theme, index, drops: [], w: 0, h: 0, running: false, easing: false, frame: 0, booted: false };
       let e, base;
@@ -395,7 +412,8 @@
       const count = () => Math.round((r.w * r.h) / 2600 * e.density);
       function size() {
         const dpr = Math.min(win.devicePixelRatio || 1, 2);
-        r.w = win.innerWidth; r.h = win.innerHeight;
+        r.w = contained ? canvas.clientWidth : win.innerWidth;
+        r.h = contained ? canvas.clientHeight : win.innerHeight;
         canvas.width = r.w * dpr; canvas.height = r.h * dpr;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
@@ -453,7 +471,12 @@
         if (reduce() || !r.running) { r.running = false; r.drops = []; draw(); }
       };
       r.stop = () => { r.running = false; win.cancelAnimationFrame(r.frame); };
-      r.destroy = () => { r.stop(); canvas.remove(); };
+      // Contained, the rain follows its element's size, not the window's.
+      if (contained && win.ResizeObserver) {
+        r.ro = new win.ResizeObserver(() => { if (canvas.clientWidth !== r.w || canvas.clientHeight !== r.h) r.resize(); });
+        r.ro.observe(canvas);
+      }
+      r.destroy = () => { r.stop(); if (r.ro) r.ro.disconnect(); canvas.remove(); };
       r.resize = () => { size(); if (!r.easing) { fill(true); } draw(); };
       r.visibility = () => { if (doc.hidden) r.stop(); else if (!r.easing) r.start(); else if (r.drops.some(Boolean)) { r.running = true; r.frame = win.requestAnimationFrame(step); } };
       r._internals = { fill, draw, step, size };     // for tests
@@ -478,7 +501,13 @@
           const pos = s.w >= 1 ? 0 : Math.min(1, Math.max(0, (s.x - s.w / 2) / (1 - s.w))) * 100;
           return `linear-gradient(to top, ${rgba(s.color, s.strength)}, transparent) ${pos.toFixed(2)}% 100% / ${s.w * 100}% ${s.h * 100}% no-repeat`;
         });
-        const el = layer(-1, `inset:-40px;background:${g.join(',')};filter:blur(14px);`);
+        // Contained, a clipping layer holds it, so the overhang never reaches past its element.
+        let el;
+        if (contained) {
+          el = doc.createElement('div');
+          el.style.cssText = `position:absolute;inset:-40px;background:${g.join(',')};filter:blur(14px);`;
+          layer(-1, 'overflow:hidden;').appendChild(el);
+        } else el = layer(-1, `inset:-40px;background:${g.join(',')};filter:blur(14px);`);
         if (e.pulse && !reduce && el.animate)        // light breathing on wet pavement
           el.animate([{ opacity: 1 }, { opacity: 0.75 }, { opacity: 1 }], { duration: 9000, iterations: Infinity, easing: 'ease-in-out' });
       }

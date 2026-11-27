@@ -688,7 +688,7 @@
     background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.55) 100%);
     pointer-events: none; z-index: 9998;
   }
-  body[data-theme="terminal"] .cm-cursor { border-left-color: #33ff33 !important; caret-color: #33ff33; }
+  body[data-theme="terminal"] .cm-cursor { border-left-color: #22cc22 !important; caret-color: #22cc22; }
 
   /* ── Amber CRT ── */
   body[data-theme="terminal"].amber-crt { --text:#ffb000; --accent:#7a4a00; --muted:#a06a00; --border:#3a2200; }
@@ -713,8 +713,8 @@
   body[data-theme="terminal"].amber-crt.crt-on .cm-dropCursor {
     border-left: none !important;
     width: 1ch !important;
-    background-color: #33ff33;
-    box-shadow: 0 0 10px rgba(51,255,51,0.55), 0 0 3px rgba(51,255,51,0.7);
+    background-color: #22cc22;
+    box-shadow: 0 0 10px rgba(34,204,34,0.55), 0 0 3px rgba(34,204,34,0.7);
     transform: none;
   }
   body[data-theme="terminal"].amber-crt.crt-on .cm-cursor,
@@ -730,7 +730,7 @@
   .tree-shape-cursor-on .cm-cursorLayer .cm-cursor { display: none !important; }
   .tree-cursor-shape.is-block { background-color: color-mix(in srgb, var(--cursor, var(--accent)) var(--block-strength, 40%), transparent); }
   .tree-cursor-shape.is-underline { background-color: var(--cursor, var(--accent)); }
-  body[data-theme="terminal"].crt-on .tree-cursor-shape.is-block { background-color: #33ff33; box-shadow: 0 0 10px rgba(51,255,51,0.55), 0 0 3px rgba(51,255,51,0.7); }
+  body[data-theme="terminal"].crt-on .tree-cursor-shape.is-block { background-color: #22cc22; box-shadow: 0 0 10px rgba(34,204,34,0.55), 0 0 3px rgba(34,204,34,0.7); }
   body[data-theme="terminal"].amber-crt .tree-cursor-shape.is-block { background-color: #ffb000; box-shadow: 0 0 10px rgba(255,176,0,0.55), 0 0 3px rgba(255,176,0,0.7); }
   body[data-theme="terminal"].doogie-journal .tree-cursor-shape.is-underline { background-color: var(--text); box-shadow: none; }
 
@@ -1393,12 +1393,15 @@
      different popup styles. Also sidesteps the original small-popover's
      positioning assumptions (it used to be anchored to #theme-label,
      which is now hidden along with the rest of the toolbar). */
+  /* Pinned near the top, not centred: packs have different numbers of themes,
+     and a centred panel moved the pack row each time you stepped to another. */
   #quick-settings {
     display: none;
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.55);
     z-index: 2000;
-    align-items: center; justify-content: center;
+    align-items: flex-start; justify-content: center;
+    padding-top: 10vh;
   }
   #quick-settings.open { display: flex; }
   #quick-settings-box {
