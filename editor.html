@@ -364,7 +364,8 @@
   .cm-line { padding: 0 !important; color: var(--text) !important; }
   @keyframes cm-blink  { 0%, 40% { opacity: 1; animation-timing-function: linear; } 50% { opacity: 0; } 90% { opacity: 0; animation-timing-function: linear; } 100% { opacity: 1; } }
   @keyframes cm-blink2 { 0%, 40% { opacity: 1; animation-timing-function: linear; } 50% { opacity: 0; } 90% { opacity: 0; animation-timing-function: linear; } 100% { opacity: 1; } }
-  .cm-cursor, .cm-dropCursor { border-left-color: var(--cursor, var(--accent)) !important; border-left-width: 2.5px !important; transform: scaleY(1.2); transform-origin: center center; }
+  /* The Obsidian plugin's cursor: a 3px bar with rounded ends (iA Writer's shape), a touch taller than the line */
+  .cm-cursor, .cm-dropCursor { border-left-color: var(--cursor, var(--accent)) !important; border-left-width: 3px !important; border-radius: 1.5px; margin-left: -1px; transform: scaleY(1.2); transform-origin: center center; }
   .cm-selectionBackground { background: var(--link, var(--accent)) !important; opacity: 0.25; }
   .cm-focused .cm-selectionBackground { background: var(--link, var(--accent)) !important; opacity: 0.25; }
   .cm-gutters { display: none !important; }
@@ -691,8 +692,9 @@
 
   /* ── Amber CRT ── */
   body[data-theme="terminal"].amber-crt { --text:#ffb000; --accent:#7a4a00; --muted:#a06a00; --border:#3a2200; }
-  body[data-theme="terminal"].amber-crt .cm-content,
-  body[data-theme="terminal"].amber-crt #preview { text-shadow: 0 0 10px color-mix(in srgb, currentColor 55%, transparent), 0 0 3px color-mix(in srgb, currentColor 70%, transparent); -webkit-font-smoothing: none; -moz-osx-font-smoothing: unset; }
+  /* crt off: terminal's soft glow; crt on: this stronger phosphor glow */
+  body[data-theme="terminal"].amber-crt.crt-on .cm-content,
+  body[data-theme="terminal"].amber-crt.crt-on #preview { text-shadow: 0 0 10px color-mix(in srgb, currentColor 55%, transparent), 0 0 3px color-mix(in srgb, currentColor 70%, transparent); -webkit-font-smoothing: none; -moz-osx-font-smoothing: unset; }
   body[data-theme="terminal"].amber-crt .cm-mood-line,
   body[data-theme="terminal"].amber-crt .dateline-chip,
   body[data-theme="terminal"].amber-crt #preview p.preview-byline { text-shadow: 0 0 1px color-mix(in srgb, currentColor 90%, transparent), 0 0 4px color-mix(in srgb, currentColor 40%, transparent); -webkit-font-smoothing: antialiased; }
@@ -707,16 +709,16 @@
   /* ── Retro block cursor (terminal + CRT on) ── */
   body[data-theme="terminal"].crt-on .cm-cursor,
   body[data-theme="terminal"].crt-on .cm-dropCursor,
-  body[data-theme="terminal"].amber-crt .cm-cursor,
-  body[data-theme="terminal"].amber-crt .cm-dropCursor {
+  body[data-theme="terminal"].amber-crt.crt-on .cm-cursor,
+  body[data-theme="terminal"].amber-crt.crt-on .cm-dropCursor {
     border-left: none !important;
     width: 1ch !important;
     background-color: #33ff33;
     box-shadow: 0 0 10px rgba(51,255,51,0.55), 0 0 3px rgba(51,255,51,0.7);
     transform: none;
   }
-  body[data-theme="terminal"].amber-crt .cm-cursor,
-  body[data-theme="terminal"].amber-crt .cm-dropCursor { background-color: #ffb000; box-shadow: 0 0 10px rgba(255,176,0,0.55), 0 0 3px rgba(255,176,0,0.7); }
+  body[data-theme="terminal"].amber-crt.crt-on .cm-cursor,
+  body[data-theme="terminal"].amber-crt.crt-on .cm-dropCursor { background-color: #ffb000; box-shadow: 0 0 10px rgba(255,176,0,0.55), 0 0 3px rgba(255,176,0,0.7); }
 
   /* ── Block and underline cursors: custom themes, Terminal CRT, Amber CRT and Doogie Journal.
         shapeCursorPlugin draws them (.tree-cursor-shape) the size of the character they sit on, and
@@ -733,16 +735,12 @@
   body[data-theme="terminal"].doogie-journal .tree-cursor-shape.is-underline { background-color: var(--text); box-shadow: none; }
 
   /* ── Selection visibility fixes for themes with dark accent colors ── */
-  /* ── Rain (Downpour: darker sky + falling streaks) ── */
-  body[data-theme="rain"]     { --bg:#192125; --surface:#1f282c; --text:#c3cfd1; --accent:#7fa6b0; --muted:#5b6f74; --border:#283438; }
-  body[data-theme="rain"].downpour-on { --bg:#0e1517; --surface:#131b1e; --text:#b0c3c5; --accent:#66a0a8; --muted:#42585c; --border:#1a2729; }
-  body[data-theme="rain"] .cm-selectionBackground,
-  body[data-theme="rain"] .cm-focused .cm-selectionBackground { background: rgba(127,166,176,0.24) !important; opacity: 1; }
-  body[data-theme="rain"] ::selection { background: rgba(127,166,176,0.24); }
-  #rain-canvas { display: none; position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
-  body[data-theme="rain"].downpour-on #rain-canvas { display: block; }
-  body[data-theme="rain"].downpour-on #editor-scroll,
-  body[data-theme="rain"].downpour-on #preview { background: transparent; }
+  /* ── Themes from packs (packs.js paints the colors and effects) ── */
+  body[data-theme="pack"] .cm-selectionBackground,
+  body[data-theme="pack"] .cm-focused .cm-selectionBackground { background: var(--selection) !important; opacity: 1; }
+  body[data-theme="pack"] ::selection { background: var(--selection); }
+  body.tp-backdrop #editor-scroll,
+  body.tp-backdrop #preview { background: transparent; }
 
   body[data-theme="dark"] .cm-selectionBackground,
   body[data-theme="dark"] .cm-focused .cm-selectionBackground { background: rgba(100,120,220,0.4) !important; opacity: 1; }
@@ -768,9 +766,12 @@
   body[data-theme="terminal"].doogie-journal select,
   body[data-theme="terminal"].doogie-journal .custom-dropdown { border-left-color: #00AAAA !important; }
 
-  /* underline cursor, WordPerfect-style, overrides the block cursor */
+  /* crt off: a bar cursor in the text's light grey, not terminal's green */
   body[data-theme="terminal"].doogie-journal .cm-cursor,
-  body[data-theme="terminal"].doogie-journal .cm-dropCursor {
+  body[data-theme="terminal"].doogie-journal .cm-dropCursor { border-left-color: #EAEAEA !important; caret-color: #EAEAEA; }
+  /* crt on: underline cursor, WordPerfect-style, overrides the block cursor */
+  body[data-theme="terminal"].doogie-journal.crt-on .cm-cursor,
+  body[data-theme="terminal"].doogie-journal.crt-on .cm-dropCursor {
     background-color: transparent !important;
     border-left: none !important;
     border-bottom: 2px solid var(--text) !important;
@@ -1230,7 +1231,7 @@
   /* ── Print / PDF export ── */
   @media print {
     #header, #statusbar, #sidebar, #sidebar-toggle, #split-divider, #editor-scroll, #word-menu, #annotation-popup, #image-hover-popup,
-    #settings-overlay, #about-overlay, #keys-overlay, #wp-confirm-overlay, #readable-overlay,
+    #settings-overlay, #about-overlay, #keys-overlay, #wp-confirm-overlay, #readable-overlay, #packs-overlay,
     #goal-prompt-overlay, .split-dropdown { display: none !important; }
     html, body { height: auto !important; overflow: visible !important; background: #fff; }
     #main { display: block !important; height: auto !important; overflow: visible !important; }
@@ -1420,6 +1421,41 @@
   body.just-write #quick-settings { display: none !important; }
   #quick-settings .settings-row { margin-top: 8px; }
   #quick-settings .settings-divider { margin: 10px 0; }
+  .pack-row { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 4px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .pack-row-label { color: var(--muted); margin-right: 6px; }
+  #pack-name { text-align: center; font-weight: 600; }
+  .pack-step { background: none; border: none; color: var(--muted); font: inherit; cursor: pointer; padding: 0 6px; border-radius: 3px; }
+  .pack-step:hover { color: var(--text); background: var(--border); }
+  #theme-switches .settings-row { margin-top: 6px; padding-left: 6px; }
+  .qs-link { display: block; background: none; border: none; padding: 0; margin-top: 10px; font: inherit; color: var(--muted); cursor: pointer; }
+  .qs-link:hover { color: var(--text); }
+  #packs-new { color: var(--accent); margin-left: 6px; }
+
+  /* ── Packs screen ── */
+  #packs-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+  #packs-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 32px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); width: 92vw; max-width: 440px; max-height: 84vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.4); position: relative; }
+  #packs-modal h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  #packs-modal h4 { font-size: 10px; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 16px 0 4px; }
+  .packs-sub { color: var(--muted); margin-bottom: 6px; line-height: 1.5; }
+  #btn-packs-close { position: absolute; top: 10px; right: 12px; background: none; border: none; color: var(--muted); font-size: 1.2em; line-height: 1; cursor: pointer; opacity: 0.5; padding: 2px 4px; }
+  #btn-packs-close:hover { opacity: 1; }
+  .pk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--border); }
+  .pk:first-child { border-top: 0; }
+  .pk-name { font-weight: 600; }
+  .pk-name span { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .pk-desc { grid-column: 1; color: var(--muted); line-height: 1.45; }
+  .pk-strip { grid-column: 1; display: flex; gap: 3px; margin-top: 2px; }
+  .pk-strip i { width: 16px; height: 8px; border-radius: 2px; border: 1px solid rgba(128,128,128,0.25); }
+  .pk-act { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .pk-btn { background: none; border: 1px solid var(--border); border-radius: 5px; padding: 4px 10px; font: inherit; color: var(--text); opacity: 0.8; cursor: pointer; white-space: nowrap; }
+  .pk-btn:hover { opacity: 1; border-color: var(--muted); }
+  .pk-btn.go { border-color: color-mix(in srgb, var(--accent) 60%, transparent); color: var(--accent); opacity: 1; }
+  .pk-btn:disabled { opacity: 0.4; cursor: default; }
+  .pk-tag { color: var(--muted); white-space: nowrap; }
+  .pk-empty { color: var(--muted); padding: 6px 0; }
+  #packs-note { min-height: 1.4em; margin-top: 10px; color: var(--muted); }
+  #packs-note.bad { color: var(--accent); }
+  .packs-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); }
 
   /* ── WordPress settings inputs ── */
   .wp-input {
@@ -1511,7 +1547,6 @@
 </style>
 </head>
 <body data-theme="parchment">
-<canvas id="rain-canvas" aria-hidden="true"></canvas>
 
 <div id="header"><div id="toolbar">
   <div id="tab-list-group">
@@ -1551,44 +1586,24 @@
       <option value="moss">moss</option>
       <option value="slate">slate</option>
       <option value="moonwalker">moonwalker</option>
-      <option value="rain">rain</option>
       <option value="terminal">terminal</option>
       <option value="custom">custom…</option>
       <option value="custom2">custom 2…</option>
       <option value="custom3">custom 3…</option>
+      <option value="pack">pack</option>
     </select>
     <span id="theme-label" title="style">style</span>
     <div id="quick-settings">
      <div id="quick-settings-box">
       <button id="btn-quick-settings-close" title="Close">×</button>
-      <div class="settings-theme-list">
-        <div class="settings-theme-item" data-value="parchment"><span class="theme-swatch" style="background:#f5f0e8"></span>parchment</div>
-        <div class="settings-theme-item" data-value="paper"><span class="theme-swatch" style="background:#f5f7fa"></span>paper</div>
-        <div class="settings-theme-item" data-value="ash"><span class="theme-swatch" style="background:#b0b0b0"></span>ash</div>
-        <div class="settings-theme-item" data-value="sage"><span class="theme-swatch" style="background:#c4d9c4"></span>sage</div>
-        <div class="settings-theme-item" data-value="gameboy"><span class="theme-swatch" style="background:#b5bd8e"></span>game boy</div>
-        <div class="settings-theme-item" data-value="dark"><span class="theme-swatch" style="background:#1a1a1a"></span>dark</div>
-        <div class="settings-theme-item" data-value="moss"><span class="theme-swatch" style="background:#1e2420"></span>moss</div>
-        <div class="settings-theme-item" data-value="slate"><span class="theme-swatch" style="background:#1c2333"></span>slate</div>
-        <div class="settings-theme-item" data-value="moonwalker"><span class="theme-swatch" style="background:#000000;outline:1px solid #6cb5f8"></span>moonwalker</div>
-        <div class="settings-theme-item" data-value="rain"><span class="theme-swatch" style="background:#192125;outline:1px solid #7fa6b0"></span>rain</div>
-        <div class="settings-theme-item" data-value="terminal"><span class="theme-swatch" style="background:#0a0a0a;outline:1px solid #1a3a1a"></span>terminal</div>
-        <div class="settings-theme-item" data-value="custom"><span class="theme-swatch theme-swatch-custom"></span>custom…</div>
-        <div class="settings-theme-item" data-value="custom2"><span class="theme-swatch theme-swatch-custom"></span>custom 2…</div>
-        <div class="settings-theme-item" data-value="custom3"><span class="theme-swatch theme-swatch-custom"></span>custom 3…</div>
+      <div class="pack-row">
+        <span class="pack-row-label">pack</span>
+        <button id="pack-prev" class="pack-step" title="Previous pack" aria-label="Previous pack">‹</button>
+        <span id="pack-name"></span>
+        <button id="pack-next" class="pack-step" title="Next pack" aria-label="Next pack">›</button>
       </div>
-      <div id="settings-crt-row" class="settings-row">
-        <input type="checkbox" id="chk-crt">
-        <label for="chk-crt">CRT mode</label>
-      </div>
-      <div id="settings-downpour-row" class="settings-row">
-        <input type="checkbox" id="chk-downpour">
-        <label for="chk-downpour">downpour</label>
-      </div>
-      <div id="settings-falling-row" class="settings-row">
-        <input type="checkbox" id="chk-falling" checked>
-        <label for="chk-falling">falling rain</label>
-      </div>
+      <div class="settings-theme-list" id="theme-list"></div>
+      <div id="theme-switches"></div>
       <input id="custom-theme-file" type="file" accept=".json,application/json" style="display:none">
       <div id="custom-colors" style="display:none; margin-top:10px;">
         <div class="color-pair" style="margin-bottom:6px;">
@@ -1723,6 +1738,7 @@
       <div class="settings-row" style="margin-top:8px;">
         <label for="settings-font-size-select" style="min-width:36px;">size</label>
         <select id="settings-font-size-select">
+          <option value="12">12px</option>
           <option value="14">14px</option>
           <option value="16">16px</option>
           <option value="18" selected>18px</option>
@@ -1732,6 +1748,7 @@
           <option value="26">26px</option>
         </select>
       </div>
+      <button id="btn-packs" class="qs-link">packs…<span id="packs-new"></span></button>
      </div>
     </div>
   </div>
@@ -1922,6 +1939,24 @@
 </div>
 
 <!-- About Modal -->
+<div id="packs-overlay" style="display:none">
+  <div id="packs-modal" role="dialog" aria-labelledby="packs-title">
+    <button id="btn-packs-close" title="Close">×</button>
+    <h3 id="packs-title">packs</h3>
+    <p class="packs-sub">Installed packs show in the pack row. Uninstalling one never touches your writing.</p>
+    <h4>on this device</h4>
+    <div id="packs-installed"></div>
+    <h4>on the shelf</h4>
+    <div id="packs-shelf"></div>
+    <p id="packs-note" aria-live="polite"></p>
+    <div class="packs-foot">
+      <button id="btn-pack-import" class="pk-btn">import pack file…</button>
+      <span id="packs-shelf-state"></span>
+    </div>
+    <input id="pack-file" type="file" accept=".json,application/json" style="display:none">
+  </div>
+</div>
+
 <div id="keys-overlay" style="display:none">
   <div id="keys-modal">
     <button id="btn-keys-close">close</button>
@@ -1994,7 +2029,7 @@
     <p class="about-sub">A Markdown Editor</p>
     <p class="about-credit">Vibe coded by Dan</p>
     <p class="about-copy">© 2026</p>
-    <p class="about-version"><span style="font-size:13px;">v1.9.0</span><span style="font-size:11px; opacity:0.35; margin: 0 5px;">·</span><a href="#" style="font-size:11px; color:var(--accent); opacity:0.5; text-decoration:none;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.5'" onclick="document.getElementById('about-overlay').style.display='none'; openReadmeTab(); return false;">readme</a></p>
+    <p class="about-version"><span style="font-size:13px;">v2.0.0</span><span style="font-size:11px; opacity:0.35; margin: 0 5px;">·</span><a href="#" style="font-size:11px; color:var(--accent); opacity:0.5; text-decoration:none;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.5'" onclick="document.getElementById('about-overlay').style.display='none'; openReadmeTab(); return false;">readme</a></p>
     <p style="margin-top:4px; font-size:11px;"><a href="https://buymeacoffee.com/dandanmian" target="_blank" style="color:var(--accent); opacity:0.7; text-decoration:none;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">☕ buy me a coffee</a></p>
   </div>
 </div>
@@ -2032,6 +2067,7 @@ var CM6=(()=>{var Vs=Object.defineProperty;var Fp=Object.getOwnPropertyDescripto
 `:i=="r"?"\r":i=="t"?"	":"\\")}eq(e){return this.search==e.search&&this.replace==e.replace&&this.caseSensitive==e.caseSensitive&&this.regexp==e.regexp&&this.wholeWord==e.wholeWord&&this.test==e.test}create(){return this.regexp?new kh(this):new Qh(this)}getCursor(e,t=0,i){let r=e.doc?e:G.create({doc:e});return i==null&&(i=r.doc.length),this.regexp?Ui(this,r,t,i):Gi(this,r,t,i)}},Rs=class{constructor(e){this.spec=e}};function fx(n,e,t){return(i,r,s,o)=>{if(t&&!t(i,r,s,o))return!1;let l=i>=o&&r<=o+s.length?s.slice(i-o,r-o):e.doc.sliceString(i,r);return n(l,e,i,r)}}function Gi(n,e,t,i){let r;return n.wholeWord&&(r=ux(e.doc,e.charCategorizer(e.selection.main.head))),n.test&&(r=fx(n.test,e,r)),new Bt(e.doc,n.unquoted,t,i,n.caseSensitive?void 0:s=>s.toLowerCase(),r)}function ux(n,e){return(t,i,r,s)=>((s>t||s+r.length<i)&&(s=Math.max(0,t-2),r=n.sliceString(s,Math.min(n.length,i+2))),(e(Ms(r,t-s))!=J.Word||e(Ls(r,t-s))!=J.Word)&&(e(Ls(r,i-s))!=J.Word||e(Ms(r,i-s))!=J.Word))}var Qh=class extends Rs{constructor(e){super(e)}nextMatch(e,t,i){let r=Gi(this.spec,e,i,e.doc.length).nextOverlapping();if(r.done){let s=Math.min(e.doc.length,t+this.spec.unquoted.length);r=Gi(this.spec,e,0,s).nextOverlapping()}return r.done||r.value.from==t&&r.value.to==i?null:r.value}prevMatchInRange(e,t,i){for(let r=i;;){let s=Math.max(t,r-1e4-this.spec.unquoted.length),o=Gi(this.spec,e,s,r),l=null;for(;!o.nextOverlapping().done;)l=o.value;if(l)return l;if(s==t)return null;r-=1e4}}prevMatch(e,t,i){let r=this.prevMatchInRange(e,0,t);return r||(r=this.prevMatchInRange(e,Math.max(0,i-this.spec.unquoted.length),e.doc.length)),r&&(r.from!=t||r.to!=i)?r:null}getReplacement(e){return this.spec.unquote(this.spec.replace)}matchAll(e,t){let i=Gi(this.spec,e,0,e.doc.length),r=[];for(;!i.next().done;){if(r.length>=t)return null;r.push(i.value)}return r}highlight(e,t,i,r){let s=Gi(this.spec,e,Math.max(0,t-this.spec.unquoted.length),Math.min(i+this.spec.unquoted.length,e.doc.length));for(;!s.next().done;)r(s.value.from,s.value.to)}};function dx(n,e,t){return(i,r,s)=>(!t||t(i,r,s))&&n(s[0],e,i,r)}function Ui(n,e,t,i){let r;return n.wholeWord&&(r=Ox(e.charCategorizer(e.selection.main.head))),n.test&&(r=dx(n.test,e,r)),new Cs(e.doc,n.search,{ignoreCase:!n.caseSensitive,test:r},t,i)}function Ms(n,e){return n.slice(re(n,e,!1),e)}function Ls(n,e){return n.slice(e,re(n,e))}function Ox(n){return(e,t,i)=>!i[0].length||(n(Ms(i.input,i.index))!=J.Word||n(Ls(i.input,i.index))!=J.Word)&&(n(Ls(i.input,i.index+i[0].length))!=J.Word||n(Ms(i.input,i.index+i[0].length))!=J.Word)}var kh=class extends Rs{nextMatch(e,t,i){let r=Ui(this.spec,e,i,e.doc.length).next();return r.done&&(r=Ui(this.spec,e,0,t).next()),r.done?null:r.value}prevMatchInRange(e,t,i){for(let r=1;;r++){let s=Math.max(t,i-r*1e4),o=Ui(this.spec,e,s,i),l=null;for(;!o.next().done;)l=o.value;if(l&&(s==t||l.from>s+10))return l;if(s==t)return null}}prevMatch(e,t,i){return this.prevMatchInRange(e,0,t)||this.prevMatchInRange(e,i,e.doc.length)}getReplacement(e){return this.spec.unquote(this.spec.replace).replace(/\$([$&]|\d+)/g,(t,i)=>{if(i=="&")return e.match[0];if(i=="$")return"$";for(let r=i.length;r>0;r--){let s=+i.slice(0,r);if(s>0&&s<e.match.length)return e.match[s]+i.slice(r)}return t})}matchAll(e,t){let i=Ui(this.spec,e,0,e.doc.length),r=[];for(;!i.next().done;){if(r.length>=t)return null;r.push(i.value)}return r}highlight(e,t,i,r){let s=Ui(this.spec,e,Math.max(0,t-250),Math.min(i+250,e.doc.length));for(;!s.next().done;)r(s.value.from,s.value.to)}},di=E.define(),Ph=E.define(),dt=se.define({create(n){return new er(js(n).create(),null)},update(n,e){for(let t of e.effects)t.is(di)?n=new er(t.value.create(),n.panel):t.is(Ph)&&(n=new er(n.query,t.value?Ah:null));return n},provide:n=>ii.from(n,e=>e.panel)});function qp(n){let e=n.field(dt,!1);return e?e.query.spec:js(n)}function Ip(n){var e;return((e=n.field(dt,!1))===null||e===void 0?void 0:e.panel)!=null}var er=class{constructor(e,t){this.query=e,this.panel=t}},px=A.mark({class:"cm-searchMatch"}),mx=A.mark({class:"cm-searchMatch cm-searchMatch-selected"}),gx=te.fromClass(class{constructor(n){this.view=n,this.decorations=this.highlight(n.state.field(dt))}update(n){let e=n.state.field(dt);(e!=n.startState.field(dt)||n.docChanged||n.selectionSet||n.viewportChanged)&&(this.decorations=this.highlight(e))}highlight({query:n,panel:e}){if(!e||!n.spec.valid)return A.none;let{view:t}=this,i=new Ce;for(let r=0,s=t.visibleRanges,o=s.length;r<o;r++){let{from:l,to:a}=s[r];for(;r<o-1&&a>s[r+1].from-500;)a=s[++r].to;n.highlight(t.state,l,a,(h,c)=>{let f=t.state.selection.ranges.some(u=>u.from==h&&u.to==c);i.add(h,c,f?mx:px)})}return i.finish()}},{decorations:n=>n.decorations});function tr(n){return e=>{let t=e.state.field(dt,!1);return t&&t.query.spec.valid?n(e,t):zs(e)}}var Hi=tr((n,{query:e})=>{let{to:t}=n.state.selection.main,i=e.nextMatch(n.state,t,t);if(!i)return!1;let r=b.single(i.from,i.to),s=n.state.facet(Oi);return n.dispatch({selection:r,effects:[Xh(n,i),s.scrollToMatch(r.main,n)],userEvent:"select.search"}),Gp(n),!0}),Ki=tr((n,{query:e})=>{let{state:t}=n,{from:i}=t.selection.main,r=e.prevMatch(t,i,i);if(!r)return!1;let s=b.single(r.from,r.to),o=n.state.facet(Oi);return n.dispatch({selection:s,effects:[Xh(n,r),o.scrollToMatch(s.main,n)],userEvent:"select.search"}),Gp(n),!0}),Th=tr((n,{query:e})=>{let t=e.matchAll(n.state,1e3);return!t||!t.length?!1:(n.dispatch({selection:b.create(t.map(i=>b.range(i.from,i.to))),userEvent:"select.search.matches"}),!0)}),Ch=({state:n,dispatch:e})=>{let t=n.selection;if(t.ranges.length>1||t.main.empty)return!1;let{from:i,to:r}=t.main,s=[],o=0;for(let l=new Bt(n.doc,n.sliceDoc(i,r));!l.next().done;){if(s.length>1e3)return!1;l.value.from==i&&(o=s.length),s.push(b.range(l.value.from,l.value.to))}return e(n.update({selection:b.create(s,o),userEvent:"select.search.matches"})),!0},Es=tr((n,{query:e})=>{let{state:t}=n,{from:i,to:r}=t.selection.main;if(t.readOnly)return!1;let s=e.nextMatch(t,i,i);if(!s)return!1;let o=s,l=[],a,h,c=[];o.precise?o.from==i&&o.to==r&&(h=t.toText(e.getReplacement(o)),l.push({from:o.from,to:o.to,insert:h}),c.push(T.announce.of(t.phrase("replaced match on line $",t.doc.lineAt(i).number)+"."))):o=e.nextMatch(t,o.from,o.to);let f=n.state.changes(l);return o&&(a=b.single(o.from,o.to).map(f),c.push(Xh(n,o)),c.push(t.facet(Oi).scrollToMatch(a.main,n))),n.dispatch({changes:f,selection:a,effects:c,userEvent:"input.replace"}),!0}),Zh=tr((n,{query:e})=>{if(n.state.readOnly)return!1;let t=[];for(let r of e.matchAll(n.state,1e9)){let{from:s,to:o,precise:l}=r;l&&t.push({from:s,to:o,insert:e.getReplacement(r)})}if(!t.length)return!1;let i=n.state.phrase("replaced $ matches",t.length)+".";return n.dispatch({changes:t,effects:T.announce.of(i),userEvent:"input.replace.all"}),!0});function Ah(n){return n.state.facet(Oi).createPanel(n)}function js(n,e){var t,i,r,s,o;let l=n.selection.main,a=l.empty||l.to>l.from+100?"":n.sliceDoc(l.from,l.to);if(e&&!a)return e;let h=n.facet(Oi);return new Fi({search:((t=e?.literal)!==null&&t!==void 0?t:h.literal)?a:a.replace(/\n/g,"\\n"),caseSensitive:(i=e?.caseSensitive)!==null&&i!==void 0?i:h.caseSensitive,literal:(r=e?.literal)!==null&&r!==void 0?r:h.literal,regexp:(s=e?.regexp)!==null&&s!==void 0?s:h.regexp,wholeWord:(o=e?.wholeWord)!==null&&o!==void 0?o:h.wholeWord})}function Np(n){let e=vn(n,Ah);return e&&e.dom.querySelector("[main-field]")}function Gp(n){let e=Np(n);e&&e==n.root.activeElement&&e.select()}var zs=n=>{let e=n.state.field(dt,!1);if(e&&e.panel){let t=Np(n);if(t&&t!=n.root.activeElement){let i=js(n.state,e.query.spec);i.valid&&n.dispatch({effects:di.of(i)}),t.focus(),t.select()}}else n.dispatch({effects:[Ph.of(!0),e?di.of(js(n.state,e.query.spec)):E.appendConfig.of($h)]});return!0},_s=n=>{let e=n.state.field(dt,!1);if(!e||!e.panel)return!1;let t=vn(n,Ah);return t&&t.dom.contains(n.root.activeElement)&&n.focus(),n.dispatch({effects:Ph.of(!1)}),!0},Up=[{key:"Mod-f",run:zs,scope:"editor search-panel"},{key:"F3",run:Hi,shift:Ki,scope:"editor search-panel",preventDefault:!0},{key:"Mod-g",run:Hi,shift:Ki,scope:"editor search-panel",preventDefault:!0},{key:"Escape",run:_s,scope:"editor search-panel"},{key:"Mod-Shift-l",run:Ch},{key:"Mod-Alt-g",run:tx},{key:"Mod-d",run:cx,preventDefault:!0}],wh=class{constructor(e){this.view=e;let t=this.query=e.state.field(dt).query.spec;this.commit=this.commit.bind(this),this.searchField=oe("input",{value:t.search,placeholder:Ee(e,"Find"),"aria-label":Ee(e,"Find"),class:"cm-textfield",name:"search",form:"","main-field":"true",onchange:this.commit,onkeyup:this.commit}),this.replaceField=oe("input",{value:t.replace,placeholder:Ee(e,"Replace"),"aria-label":Ee(e,"Replace"),class:"cm-textfield",name:"replace",form:"",onchange:this.commit,onkeyup:this.commit}),this.caseField=oe("input",{type:"checkbox",name:"case",form:"",checked:t.caseSensitive,onchange:this.commit}),this.reField=oe("input",{type:"checkbox",name:"re",form:"",checked:t.regexp,onchange:this.commit}),this.wordField=oe("input",{type:"checkbox",name:"word",form:"",checked:t.wholeWord,onchange:this.commit});function i(r,s,o){return oe("button",{class:"cm-button",name:r,onclick:s,type:"button"},o)}this.dom=oe("div",{onkeydown:r=>this.keydown(r),class:"cm-search"},[this.searchField,i("next",()=>Hi(e),[Ee(e,"next")]),i("prev",()=>Ki(e),[Ee(e,"previous")]),i("select",()=>Th(e),[Ee(e,"all")]),oe("label",null,[this.caseField,Ee(e,"match case")]),oe("label",null,[this.reField,Ee(e,"regexp")]),oe("label",null,[this.wordField,Ee(e,"by word")]),...e.state.readOnly?[]:[oe("br"),this.replaceField,i("replace",()=>Es(e),[Ee(e,"replace")]),i("replaceAll",()=>Zh(e),[Ee(e,"replace all")])],oe("button",{name:"close",onclick:()=>_s(e),"aria-label":Ee(e,"close"),type:"button"},["\xD7"])])}commit(){let e=new Fi({search:this.searchField.value,caseSensitive:this.caseField.checked,regexp:this.reField.checked,wholeWord:this.wordField.checked,replace:this.replaceField.value});e.eq(this.query)||(this.query=e,this.view.dispatch({effects:di.of(e)}))}keydown(e){zf(this.view,e,"search-panel")?e.preventDefault():e.keyCode==13&&e.target==this.searchField?(e.preventDefault(),(e.shiftKey?Ki:Hi)(this.view)):e.keyCode==13&&e.target==this.replaceField&&(e.preventDefault(),Es(this.view))}update(e){for(let t of e.transactions)for(let i of t.effects)i.is(di)&&!i.value.eq(this.query)&&this.setQuery(i.value)}setQuery(e){this.query=e,this.searchField.value=e.search,this.replaceField.value=e.replace,this.caseField.checked=e.caseSensitive,this.reField.checked=e.regexp,this.wordField.checked=e.wholeWord}mount(){this.searchField.select()}get pos(){return 80}get top(){return this.view.state.facet(Oi).top}};function Ee(n,e){return n.state.phrase(e)}var Ps=30,Ts=/[\s\.,:;?!]/;function Xh(n,{from:e,to:t}){let i=n.state.doc.lineAt(e),r=n.state.doc.lineAt(t).to,s=Math.max(i.from,e-Ps),o=Math.min(r,t+Ps),l=n.state.sliceDoc(s,o);if(s!=i.from){for(let a=0;a<Ps;a++)if(!Ts.test(l[a+1])&&Ts.test(l[a])){l=l.slice(a);break}}if(o!=r){for(let a=l.length-1;a>l.length-Ps;a--)if(!Ts.test(l[a-1])&&Ts.test(l[a])){l=l.slice(0,a);break}}return T.announce.of(`${n.state.phrase("current match")}. ${l} ${n.state.phrase("on line")} ${i.number}.`)}var Sx=T.baseTheme({".cm-panel.cm-search":{padding:"2px 6px 4px",position:"relative","& [name=close]":{position:"absolute",top:"0",right:"4px",backgroundColor:"inherit",border:"none",font:"inherit",padding:0,margin:0},"& input, & button, & label":{margin:".2em .6em .2em 0"},"& input[type=checkbox]":{marginRight:".2em"},"& label":{fontSize:"80%",whiteSpace:"pre"}},"&light .cm-searchMatch":{backgroundColor:"#ffff0054"},"&dark .cm-searchMatch":{backgroundColor:"#00ffff8a"},"&light .cm-searchMatch-selected":{backgroundColor:"#ff6a0054"},"&dark .cm-searchMatch-selected":{backgroundColor:"#ff00ff8a"}}),$h=[dt,Ve.low(gx),Sx];return tm(bx);})();
 </script>
 <script src="spell.js"></script>
+<script src="packs.js"></script>
 <script>
 'use strict';
 
@@ -2066,7 +2102,7 @@ const JW_KEY       = 'tree-just-write';
 const GOAL_KEY     = 'tree-goal-target';
 const JW_WORDS     = 500;
 const JW_MINUTES   = 30;
-const VERSION      = '1.9.0';
+const VERSION      = '2.0.0';
 
 // ── Ginkgo embed mode ───────────────────────────────────────────────
 // This file is a maintained fork of tree/index.html, used only as the
@@ -2866,8 +2902,8 @@ function cursorShape() {
   if (b.contains('cursor-block'))     return 'block';
   if (b.contains('cursor-underline')) return 'underline';
   if (document.body.dataset.theme !== 'terminal') return 'line';
-  if (b.contains('doogie-journal'))   return 'underline';
-  return (b.contains('crt-on') || b.contains('amber-crt')) ? 'block' : 'line';
+  if (b.contains('doogie-journal') && b.contains('crt-on')) return 'underline';
+  return b.contains('crt-on') ? 'block' : 'line';   // the CRT block, on any terminal screen with crt on
 }
 
 const shapeCursorPlugin = ViewPlugin.fromClass(class {
@@ -4292,12 +4328,17 @@ function clearCustomColors() {
 }
 
 // A named custom theme goes by its name in the theme list, with (C1) to (C3) after it so it still reads as custom
+function customLabel(slot) {
+  const i = CUSTOM_SLOTS.indexOf(slot);
+  const own = document.getElementById('custom-name' + slot.sfx).value.trim();
+  return own ? own + ' (C' + (i + 1) + ')' : slot.label + '…';
+}
 function syncCustomNames() {
-  CUSTOM_SLOTS.forEach((slot, i) => {
-    const own  = document.getElementById('custom-name' + slot.sfx).value.trim();
-    const name = own ? own + ' (C' + (i + 1) + ')' : slot.label + '…';
+  CUSTOM_SLOTS.forEach(slot => {
+    const name = customLabel(slot);
     document.querySelector('#theme-select option[value="' + slot.key + '"]').textContent = name;
-    document.querySelector('.settings-theme-item[data-value="' + slot.key + '"]').lastChild.textContent = name;
+    const item = document.querySelector('#theme-list .settings-theme-item[data-value="' + slot.key + '"]');
+    if (item) item.lastChild.textContent = name;
   });
 }
 
@@ -4342,49 +4383,77 @@ function importCustomTheme(slot, file) {
   });
 }
 
+// The quick panel: the pack row, that pack's themes, and the switches of
+// the theme in use. The list is rebuilt only when the pack changes, so a
+// click on a theme never pulls the item out from under the pointer.
+let shownPackId = null;
 function syncThemeUI() {
-  const val = document.getElementById('theme-select').value || 'parchment';
-  document.getElementById('theme-label').title = val;
-  document.querySelectorAll('.settings-theme-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.value === val);
-  });
-  // CRT row: only show for terminal theme
-  const crtRow = document.getElementById('settings-crt-row');
-  crtRow.style.display = (val === 'terminal') ? 'flex' : 'none';
-  document.getElementById('settings-downpour-row').style.display = (val === 'rain') ? 'flex' : 'none';
-  document.getElementById('settings-falling-row').style.display =
-    (val === 'rain' && document.body.classList.contains('downpour-on')) ? 'flex' : 'none';
-  updateRain();
+  const pack  = findPack(packs.current.pack) || TreePacks.BUILTIN[0];
+  const theme = TreePacks.findTheme(pack, packs.current.theme);
+  document.getElementById('theme-label').title = theme ? theme.name : 'style';
+  document.getElementById('pack-name').textContent = pack.name.toLowerCase();
+  const list = document.getElementById('theme-list');
+  if (shownPackId !== pack.id || !list.firstChild) {
+    shownPackId = pack.id;
+    list.textContent = '';
+    for (const t of pack.themes) {
+      const item = document.createElement('div');
+      item.className = 'settings-theme-item';
+      item.dataset.value = t.native ? t.id : 'pack';
+      item.dataset.theme = t.id;
+      const sw = document.createElement('span');
+      sw.className = 'theme-swatch' + (t.custom ? ' theme-swatch-custom' : '');
+      if (!t.custom) {
+        sw.style.background = t.colors.bg;
+        const ring = SWATCH_RINGS[t.id] || (t.effects.some(e => e.type === 'light') ? t.colors.accent : null);
+        if (ring) sw.style.outline = '1px solid ' + ring;
+      }
+      item.append(sw, document.createTextNode(t.custom ? customLabel(CUSTOM_SLOTS.find(c => c.key === t.id)) : t.name));
+      list.append(item);
+    }
+  }
+  list.querySelectorAll('.settings-theme-item').forEach(item =>
+    item.classList.toggle('active', !!theme && item.dataset.theme === theme.id));
+  // Switches sit under the list, only while the theme has them.
+  const box = document.getElementById('theme-switches');
+  box.textContent = '';
+  if (theme) {
+    const choices = themeChoices(pack, theme);
+    for (const sw of TreePacks.switchesOf(theme)) {
+      const row = document.createElement('div');
+      row.className = 'settings-row';
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.id = 'switch-' + sw.label.replace(/[^a-z0-9]+/gi, '-');
+      chk.checked = typeof choices[sw.label] === 'boolean' ? choices[sw.label] : sw.on;
+      chk.addEventListener('change', () => setSwitch(sw.label, chk.checked));
+      const lab = document.createElement('label');
+      lab.htmlFor = chk.id;
+      lab.textContent = sw.label;
+      row.append(chk, lab);
+      box.append(row);
+    }
+  }
   // Custom colors panels
+  const val = document.getElementById('theme-select').value;
   CUSTOM_SLOTS.forEach(slot => {
     document.getElementById('custom-colors' + slot.sfx).style.display = (val === slot.key) ? 'block' : 'none';
   });
-  // Amber CRT / Doogie Journal: only valid in terminal
-  if (val !== 'terminal') {
-    document.body.classList.remove('amber-crt');
-    document.body.classList.remove('doogie-journal');
-  }
+  syncPacksNew();
 }
 
+// Classic and Retro themes picked by their old name (the hidden select,
+// custom theme import): same as choosing them in the pack row.
 function setTheme(val) {
-  if (justWriteActive) return;
-  const select = document.getElementById('theme-select');
-  select.value = val;
-  document.body.dataset.theme = customSlot(val) ? '' : (val || 'parchment');
-  if (customSlot(val)) applyCustomColors();
-  else clearCustomColors();
-  if (val !== 'terminal') {
-    document.body.classList.remove('amber-crt');
-    document.body.classList.remove('doogie-journal');
-  }
-  syncThemeUI();
-  saveSettings();
-  askReadable();
+  const builtin = TreePacks.BUILTIN.find(p => p.themes.some(t => t.id === val));
+  if (builtin) selectPackTheme(builtin.id, val);
 }
 
 document.getElementById('theme-label').addEventListener('click', () => {
   if (justWriteActive) return;
-  document.getElementById('quick-settings').classList.toggle('open');
+  const qs = document.getElementById('quick-settings');
+  qs.classList.toggle('open');
+  if (qs.classList.contains('open')) checkShelf();
 });
 
 // Same pattern as #settings-overlay: only close when the click lands on the
@@ -4402,146 +4471,377 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.getElementById('quick-settings').classList.remove('open');
 });
 
-document.querySelectorAll('.settings-theme-item').forEach(item => {
-  item.addEventListener('click', () => setTheme(item.dataset.value));
+document.getElementById('theme-list').addEventListener('click', e => {
+  const item = e.target.closest('.settings-theme-item');
+  if (item) selectPackTheme(shownPackId, item.dataset.theme);
 });
+function stepPack(dir) {
+  if (justWriteActive) return;
+  const all = allPacks();
+  const i = Math.max(0, all.findIndex(p => p.id === packs.current.pack));
+  const next = all[((i + dir) % all.length + all.length) % all.length];
+  selectPackTheme(next.id, TreePacks.openingTheme(next, packs.last).id);
+}
+document.getElementById('pack-prev').addEventListener('click', () => stepPack(-1));
+document.getElementById('pack-next').addEventListener('click', () => stepPack(1));
 
 document.getElementById('theme-select').addEventListener('change', function() {
   setTheme(this.value);
 });
 
-document.getElementById('chk-crt').addEventListener('change', function() {
-  document.body.classList.toggle('crt-on', this.checked);
-  if (!this.checked) {
-    document.body.classList.remove('amber-crt');
-    document.body.classList.remove('doogie-journal');
-  }
-  saveSettings();
-});
+// ── Theme packs (packs.js; PACKS-PLAN.md) ─────────────────────────────
+// Classic and Retro are built in and keep Tree's own theme code. Packs
+// from the shelf (or a file) are painted by packs.js. Installed packs live
+// in localStorage, so they work offline.
+const PACKS_KEY      = 'tree-packs';
+const PACK_STATE_KEY = 'tree-pack-state';
+const SHELF_URL      = 'https://uncle-jasper.github.io/tree-packs/';
+// Rain was built into Tree before packs. Anyone who had it gets this copy
+// of the Rain pack on first launch, so it looks the same even offline; the
+// shelf offers updates after that.
+const RAIN_SEED = {"treePack":1,"id":"rain","name":"Rain","version":"1.0.0","description":"From a grey afternoon to a neon night.","everyday":"rain","themes":[{"id":"overcast","name":"overcast","light":true,"colors":{"bg":"#ccd4d6","surface":"#c1cacd","text":"#1f2b2f","accent":"#2b616d","muted":"#647579","border":"#adb9bc"},"effects":[{"type":"particles","switch":"falling rain","on":false,"color":"#46646e","opacity":1.6}]},{"id":"rain","name":"rain","colors":{"bg":"#192125","surface":"#1f282c","text":"#c3cfd1","accent":"#7fa6b0","muted":"#5b6f74","border":"#283438"},"effects":[{"type":"particles","switch":"falling rain","on":false,"color":"#a5c3c8"}]},{"id":"downpour","name":"downpour","colors":{"bg":"#0e1517","surface":"#131b1e","text":"#b0c3c5","accent":"#66a0a8","muted":"#42585c","border":"#1a2729"},"effects":[{"type":"particles","switch":"falling rain","on":true,"color":"#91bec3"}]},{"id":"wet-street","name":"wet street","colors":{"bg":"#141a1d","surface":"#1a2125","text":"#c6cdcf","accent":"#d4a15e","muted":"#5e6b70","border":"#242d32"},"effects":[{"type":"particles","switch":"falling rain","on":false,"color":"#c8b996"}]},{"id":"wet-neon","name":"wet neon","colors":{"bg":"#0b1115","surface":"#10181d","text":"#d0dadd","accent":"#ff5aac","muted":"#4f6168","border":"#1a252b"},"effects":[{"type":"light","flicker":true,"pulse":true,"spots":[{"x":0.14,"y":0,"w":0.34,"h":0.7,"color":"#ff3ca5","strength":0.22},{"x":0.86,"y":0,"w":0.3,"h":0.6,"color":"#32d7f0","strength":0.18},{"x":0.14,"y":1,"w":0.34,"h":0.6,"color":"#32d7f0","strength":0.14},{"x":0.86,"y":1,"w":0.3,"h":0.55,"color":"#ff3ca5","strength":0.16}],"streaks":[{"x":0.1,"w":0.09,"h":0.45,"color":"#32d7f0","strength":0.14},{"x":0.19,"w":0.04,"h":0.36,"color":"#32d7f0","strength":0.08},{"x":0.85,"w":0.08,"h":0.45,"color":"#ff3ca5","strength":0.15},{"x":0.76,"w":0.04,"h":0.32,"color":"#ff3ca5","strength":0.08}]},{"type":"particles","switch":"falling rain","on":true,"color":"#bec8e1","opacity":1.25,"regions":[{"x":0,"y":0,"w":0.32,"h":0.5,"color":"#ff5fb4","chance":0.75},{"x":0,"y":0.5,"w":0.32,"h":0.5,"color":"#50e1f5","chance":0.75},{"x":0.7,"y":0,"w":0.3,"h":0.5,"color":"#50e1f5","chance":0.75},{"x":0.7,"y":0.5,"w":0.3,"h":0.5,"color":"#ff5fb4","chance":0.75}]},{"type":"glow","target":"links","strength":0.35}]}]};
+// Swatch rings the old theme list had.
+const SWATCH_RINGS = { moonwalker: '#6cb5f8', terminal: '#1a3a1a', 'amber-crt': '#ffb000' };
 
-document.getElementById('chk-downpour').addEventListener('change', function() {
-  document.body.classList.toggle('downpour-on', this.checked);
+const packStage = TreePacks.createStage({
+  selectors: {
+    text: '#editor-cm .cm-content, #preview',
+    links: '#preview a',
+    cursor: '.cm-cursor',
+    headings: '#preview h1, #preview h2, #preview h3, #preview h4, #preview h5, #preview h6, ' +
+              '.cm-tree-h1, .cm-tree-h2, .cm-tree-h3, .cm-tree-h4, .cm-tree-h5, .cm-tree-h6',
+  },
+});
+const packs = {
+  installed: {},                                 // id → pack from the shelf or a file
+  seen: {},                                      // id → shelf version already shown as new
+  shelf: null, shelfState: 'unchecked',          // the shelf's index.json, once fetched
+  current: { pack: 'classic', theme: 'parchment' },
+  last: {},                                      // pack id → theme last used in it
+  switches: {},                                  // 'pack/theme' → { label: on }
+  remembered: null,                              // colors of the shelf theme in use
+};
+
+function loadPackStore() {
+  try {
+    const st = JSON.parse(localStorage.getItem(PACKS_KEY) || '{}');
+    for (const raw of Object.values(st.installed || {})) {
+      const r = TreePacks.check(raw);
+      if (r.ok) packs.installed[r.pack.id] = r.pack;
+    }
+    packs.seen = st.seen || {};
+  } catch(e) {}
+}
+function savePackStore() {
+  try { localStorage.setItem(PACKS_KEY, JSON.stringify({ installed: packs.installed, seen: packs.seen })); } catch(e) {}
+}
+function allPacks() {
+  return TreePacks.BUILTIN.concat(Object.values(packs.installed).sort((a, b) => a.name.localeCompare(b.name)));
+}
+function findPack(id) { return allPacks().find(p => p.id === id) || null; }
+function themeChoices(pack, theme) { return packs.switches[pack.id + '/' + theme.id] || {}; }
+
+function selectPackTheme(packId, themeId) {
+  if (justWriteActive) return;
+  const pack = findPack(packId);
+  if (!pack) return;
+  const theme = TreePacks.findTheme(pack, themeId) || TreePacks.openingTheme(pack, packs.last);
+  packs.current = { pack: pack.id, theme: theme.id };
+  packs.last[pack.id] = theme.id;
+  applyPackTheme(pack, theme);
   syncThemeUI();
   saveSettings();
-});
+  askReadable();
+}
 
-document.getElementById('chk-falling').addEventListener('change', function() {
-  document.body.classList.toggle('rain-still', !this.checked);
-  updateRain();
-  saveSettings();
-});
-
-// ── Downpour: rain streaks behind the page (rain theme only) ──────────
-// When the rain stops, drops already falling finish their fall; when it
-// starts again, new drops come in from the top.
-const rain = { canvas: document.getElementById('rain-canvas'), drops: [], w: 0, h: 0, running: false, easing: false, frame: 0 };
-rain.ctx = rain.canvas.getContext('2d');
-function rainShown() {
-  return document.body.dataset.theme === 'rain' && document.body.classList.contains('downpour-on');
-}
-function rainFalling() {
-  return rainShown() && !document.body.classList.contains('rain-still');
-}
-function rainDrop(anywhere) {
-  const z = Math.random();
-  return {
-    x: Math.random() * (rain.w + 60) - 30,
-    y: anywhere ? Math.random() * rain.h : -20 - Math.random() * rain.h * 0.6,
-    len: 14 + z * 22, v: 7 + z * 9, a: 0.05 + z * 0.09
-  };
-}
-function rainCount() { return Math.round((rain.w * rain.h) / 2600); }
-function rainSize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  rain.w = window.innerWidth; rain.h = window.innerHeight;
-  rain.canvas.width = rain.w * dpr; rain.canvas.height = rain.h * dpr;
-  rain.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-function rainFill(anywhere) {
-  rain.drops = [];
-  for (let i = 0, n = rainCount(); i < n; i++) rain.drops.push(rainDrop(anywhere));
-}
-function rainDraw() {
-  const ctx = rain.ctx;
-  ctx.clearRect(0, 0, rain.w, rain.h);
-  ctx.lineWidth = 1; ctx.lineCap = 'round';
-  for (const d of rain.drops) {
-    if (!d) continue;
-    ctx.strokeStyle = 'rgba(145,190,195,' + d.a + ')';
-    ctx.beginPath();
-    ctx.moveTo(d.x, d.y);
-    ctx.lineTo(d.x - d.len * 0.12, d.y + d.len);
-    ctx.stroke();
-  }
-}
-function rainStep() {
-  if (!rain.running) return;
-  let left = 0;
-  for (let i = 0; i < rain.drops.length; i++) {
-    const d = rain.drops[i];
-    if (!d) continue;
-    d.y += d.v; d.x -= d.v * 0.12;
-    if (d.y > rain.h + 20) rain.drops[i] = rain.easing ? null : rainDrop(false);
-    if (rain.drops[i]) left++;
-  }
-  rainDraw();
-  if (rain.easing && !left) { rain.running = false; rain.drops = []; return; }
-  rain.frame = requestAnimationFrame(rainStep);
-}
-let rainBooted = false;
-function updateRain() {
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!rainShown() || document.hidden) {
-    rain.running = false; cancelAnimationFrame(rain.frame);
-    if (!rainShown()) { rain.drops = []; rainBooted = false; }
-    return;
-  }
-  if (!rain.w) rainSize();
-  if (reduce) {
-    rain.running = false; cancelAnimationFrame(rain.frame);
-    if (rainFalling()) rainFill(true); else rain.drops = [];
-    rainDraw();
-    return;
-  }
-  if (rainFalling()) {
-    rain.easing = false;
-    if (!rain.drops.some(Boolean)) rainFill(!rainBooted);   // first appearance: already raining; later: starts from the top
-    else rain.drops = rain.drops.map(d => d || rainDrop(false));
+// Paint a theme. Built-in ones use Tree's own CSS, exactly as before packs.
+function applyPackTheme(pack, theme) {
+  const select = document.getElementById('theme-select');
+  const b = document.body.classList;
+  b.remove('amber-crt', 'doogie-journal');
+  if (theme.native) {
+    packStage.clear();
+    packs.remembered = null;
+    const key = theme.native.theme;
+    select.value = key;
+    document.body.dataset.theme = customSlot(key) ? '' : key;
+    if (customSlot(key)) applyCustomColors(); else clearCustomColors();
+    const on = TreePacks.activeEffects(theme, themeChoices(pack, theme));
+    b.toggle('crt-on', theme.native.classes.includes('crt-on') || on.some(e => e.className === 'crt-on'));
+    theme.native.classes.forEach(c => b.add(c));
   } else {
-    rain.easing = true;
-    if (!rainBooted) rain.drops = [];
+    select.value = 'pack';
+    clearCustomColors();
+    b.remove('crt-on');
+    packStage.apply(theme, themeChoices(pack, theme));
+    packs.remembered = TreePacks.remember(pack, theme);
   }
-  rainBooted = true;
-  if (!rain.running && rain.drops.some(Boolean)) { rain.running = true; rain.frame = requestAnimationFrame(rainStep); }
-  if (!rain.drops.some(Boolean)) rainDraw();
 }
-window.addEventListener('resize', () => { if (rainShown()) { rainSize(); if (rainFalling()) rainFill(true); rainDraw(); } });
-document.addEventListener('visibilitychange', updateRain);
 
-// ── umbre11a: stop or start the falling rain (rain theme, downpour on) ─
-const UMBRELLA = ['u','m','b','r','e','1','1','a'];
-let umbrellaPos = 0;
-document.addEventListener('keyup', e => {
-  if (!rainShown()) { umbrellaPos = 0; return; }
-  if (e.key.length !== 1) return;
-  const key = e.key.toLowerCase();
-  const cur = (view && view.hasFocus) ? view.state.selection.main.from : -1;
-  const onBlankLine = cur >= 0 && view.state.doc.lineAt(cur).text.trim().length <= UMBRELLA.length;
-  if (!onBlankLine || key !== UMBRELLA[umbrellaPos]) { umbrellaPos = key === UMBRELLA[0] ? 1 : 0; return; }
-  if (++umbrellaPos < UMBRELLA.length) return;
-  umbrellaPos = 0;
-  const line = view.state.doc.lineAt(view.state.selection.main.from);
-  if (line.text.trim().toLowerCase() === 'umbre11a') {
-    view.dispatch({ changes: { from: line.from, to: line.to, insert: '' }, userEvent: 'delete' });
-  }
-  const chk = document.getElementById('chk-falling');
-  chk.checked = !chk.checked;
-  document.body.classList.toggle('rain-still', !chk.checked);
-  updateRain();
+function setSwitch(label, on) {
+  const pack = findPack(packs.current.pack), theme = pack && TreePacks.findTheme(pack, packs.current.theme);
+  if (!theme) return;
+  const key = pack.id + '/' + theme.id;
+  packs.switches[key] = Object.assign({}, packs.switches[key], { [label]: on });
+  applyPackTheme(pack, theme);
   saveSettings();
-  if (document.getElementById('chk-welcome').checked) {
-    typeStatusMessage(chk.checked ? 'grab your umbrella.' : 'the rain has let up.');
+}
+
+// What an app without packs should show for the theme in use: Ginkgo
+// shares Tree's saved settings, and only learns about packs in its own
+// update (PACKS-PLAN.md, phase 4).
+function legacyTheme() {
+  // Until the saved theme has been moved over, keep writing it back unchanged.
+  if (!packs.restored) {
+    const s = packs.saved || {};
+    return { theme: s.theme || 'parchment', downpour: !!s.downpour, rainStill: !!s.rainStill };
   }
+  const pack = findPack(packs.current.pack), theme = pack && TreePacks.findTheme(pack, packs.current.theme);
+  if (!theme) return { theme: 'parchment', downpour: false, rainStill: false };
+  if (theme.native) return { theme: theme.native.theme, downpour: false, rainStill: false };
+  if (pack.id === 'rain' && (theme.id === 'rain' || theme.id === 'downpour')) {
+    const falling = TreePacks.activeEffects(theme, themeChoices(pack, theme)).some(e => e.type === 'particles');
+    return { theme: 'rain', downpour: theme.id === 'downpour', rainStill: theme.id === 'downpour' && !falling };
+  }
+  return { theme: theme.light ? 'parchment' : 'dark', downpour: false, rainStill: false };
+}
+const legacySignature = s => [s.theme || '', !!s.downpour, !!s.rainStill, !!s.crtEnabled].join('|');
+
+function savePackState(signature) {
+  if (!packs.restored) return;
+  try {
+    localStorage.setItem(PACK_STATE_KEY, JSON.stringify({ current: packs.current, last: packs.last,
+      switches: packs.switches, remembered: packs.remembered, legacy: signature }));
+  } catch(e) {}
+}
+
+// On launch: the pack state, or, on the first launch with packs (or after
+// the theme was changed in an app without packs), the old settings moved
+// over (PACKS-PLAN.md, "Moving today's settings over").
+function restorePackState(s) {
+  let st = null;
+  try { st = JSON.parse(localStorage.getItem(PACK_STATE_KEY)); } catch(e) {}
+  if (st) { packs.last = st.last || {}; packs.switches = st.switches || {}; packs.remembered = st.remembered || null; }
+  let cur;
+  if (st && st.current && st.legacy === legacySignature(s || {})) {
+    cur = st.current;
+  } else {
+    const l = TreePacks.fromLegacy(s);
+    if (l.pack === 'rain' && !packs.installed.rain) installPack(RAIN_SEED);
+    cur = { pack: l.pack, theme: l.theme };
+    if (Object.keys(l.switches).length) {
+      const key = l.pack + '/' + l.theme;
+      packs.switches[key] = Object.assign({}, packs.switches[key], l.switches);
+    }
+  }
+  let pack = findPack(cur.pack), theme = pack && TreePacks.findTheme(pack, cur.theme);
+  if (!theme) {
+    // Its pack is gone. Keep its colors if we have them; effects wait for the pack.
+    const mem = packs.remembered && packs.remembered.pack === cur.pack && TreePacks.fromMemory(packs.remembered);
+    if (mem) {
+      packs.current = cur;
+      document.getElementById('theme-select').value = 'pack';
+      packStage.apply(mem, {});
+      return;
+    }
+    pack = TreePacks.BUILTIN[0]; theme = TreePacks.findTheme(pack, 'parchment');
+  }
+  packs.current = { pack: pack.id, theme: theme.id };
+  packs.last[pack.id] = theme.id;
+  applyPackTheme(pack, theme);
+}
+
+// ── Installing, updating and removing packs ───────────────────────────
+function installPack(raw) {
+  const r = TreePacks.check(raw);
+  if (!r.ok) return r;
+  if (TreePacks.BUILTIN.some(p => p.id === r.pack.id)) return { ok: false, error: 'That pack is built into Tree already.' };
+  packs.installed[r.pack.id] = r.pack;
+  savePackStore();
+  return r;
+}
+function uninstallPack(id) {
+  const name = packs.installed[id] ? packs.installed[id].name.toLowerCase() : id;
+  // Remove the pack and everything remembered about it.
+  delete packs.installed[id];
+  delete packs.last[id];
+  for (const key of Object.keys(packs.switches)) if (key.startsWith(id + '/')) delete packs.switches[key];
+  savePackStore();
+  if (packs.current.pack === id) {
+    selectPackTheme('classic', 'dark');
+    return name + ' uninstalled. switched to dark.';
+  }
+  syncThemeUI();
+  return name + ' uninstalled.';
+}
+// After an install or update: show the pack in use again if it changed.
+function refreshCurrent(id) {
+  if (packs.current.pack !== id) { syncThemeUI(); return; }
+  shownPackId = null;
+  selectPackTheme(id, packs.current.theme);
+}
+
+function exportPack(id) {
+  const p = packs.installed[id];
+  if (!p) return;
+  const blob = new Blob([JSON.stringify(p, null, 2) + '\n'], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = id + '.tree-pack.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ── The shelf ─────────────────────────────────────────────────────────
+let shelfRequest = null;
+function checkShelf(force) {
+  if (shelfRequest && !force) return shelfRequest;
+  packs.shelfState = 'checking';
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  shelfRequest = fetch(SHELF_URL + 'index.json', { cache: 'no-cache', signal: ctl.signal })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(idx => {
+      if (!idx || idx.treePacks !== 1 || !Array.isArray(idx.packs)) throw new Error('index');
+      packs.shelf = idx.packs.filter(e => e && typeof e.id === 'string' && typeof e.file === 'string' && /^packs\/[a-z0-9-]+\.tree-pack\.json$/.test(e.file));
+      packs.shelfState = 'ok';
+    })
+    .catch(() => { packs.shelfState = 'offline'; shelfRequest = null; })
+    .finally(() => { clearTimeout(timer); syncPacksNew(); if (packsOpen()) renderPacks(); });
+  return shelfRequest;
+}
+function shelfEntry(id) { return (packs.shelf || []).find(e => e.id === id); }
+function fetchShelfPack(entry) {
+  return fetch(SHELF_URL + entry.file, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(r.status); return r.text(); });
+}
+// Shelf packs not installed and not yet seen on the Packs screen, plus updates.
+function shelfNews() {
+  let n = 0;
+  for (const e of packs.shelf || []) {
+    const mine = packs.installed[e.id];
+    if (mine ? TreePacks.newer(mine.version, e.version) : packs.seen[e.id] !== e.version) n++;
+  }
+  return n;
+}
+function syncPacksNew() {
+  const n = shelfNews();
+  document.getElementById('packs-new').textContent = n ? n + ' new' : '';
+}
+
+// ── The Packs screen ──────────────────────────────────────────────────
+function packsOpen() { return document.getElementById('packs-overlay').style.display === 'flex'; }
+function packsNote(text, bad) {
+  const el = document.getElementById('packs-note');
+  el.textContent = text || '';
+  el.classList.toggle('bad', !!bad);
+}
+function openPacks() {
+  if (justWriteActive) return;
+  document.getElementById('quick-settings').classList.remove('open');
+  document.getElementById('packs-overlay').style.display = 'flex';
+  packsNote('');
+  renderPacks();
+  checkShelf(packs.shelfState === 'offline');
+}
+function closePacks() {
+  document.getElementById('packs-overlay').style.display = 'none';
+  // What the person has now seen on the shelf is no longer new.
+  for (const e of packs.shelf || []) if (!packs.installed[e.id]) packs.seen[e.id] = e.version;
+  savePackStore();
+  syncPacksNew();
+}
+function packRow(p, extra) {
+  const row = document.createElement('div');
+  row.className = 'pk';
+  const name = document.createElement('span');
+  name.className = 'pk-name';
+  name.textContent = p.name.toLowerCase();
+  if (!extra.builtin) {
+    const ver = document.createElement('span');
+    ver.textContent = p.version;
+    name.append(ver);
+  }
+  row.append(name);
+  if (p.description) {
+    const d = document.createElement('span');
+    d.className = 'pk-desc';
+    d.textContent = p.description;
+    row.append(d);
+  }
+  const strip = document.createElement('span');
+  strip.className = 'pk-strip';
+  for (const c of extra.swatches) { const i = document.createElement('i'); i.style.background = c; strip.append(i); }
+  row.append(strip);
+  const act = document.createElement('span');
+  act.className = 'pk-act';
+  for (const [label, fn, go] of extra.actions || []) {
+    const b = document.createElement('button');
+    b.className = 'pk-btn' + (go ? ' go' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => fn(b));
+    act.append(b);
+  }
+  if (extra.builtin) { const t = document.createElement('span'); t.className = 'pk-tag'; t.textContent = 'built in'; act.append(t); }
+  row.append(act);
+  return row;
+}
+const HEXLIKE = /^#[0-9a-f]{6}$/i;
+function renderPacks() {
+  const mine = document.getElementById('packs-installed');
+  mine.textContent = '';
+  for (const p of TreePacks.BUILTIN)
+    mine.append(packRow(p, { builtin: true, swatches: p.themes.filter(t => !t.custom).map(t => t.colors.bg) }));
+  for (const p of Object.values(packs.installed).sort((a, b) => a.name.localeCompare(b.name))) {
+    const e = shelfEntry(p.id);
+    const actions = [];
+    if (e && TreePacks.newer(p.version, e.version)) actions.push(['update', b => installFromShelf(e, b, 'updated'), true]);
+    else actions.push(['export', () => exportPack(p.id)]);
+    actions.push(['uninstall', () => { packsNote(uninstallPack(p.id)); renderPacks(); }]);
+    mine.append(packRow(p, { swatches: p.themes.map(t => t.colors.bg), actions }));
+  }
+  const shelf = document.getElementById('packs-shelf');
+  shelf.textContent = '';
+  const state = document.getElementById('packs-shelf-state');
+  if (packs.shelfState === 'ok') {
+    const missing = packs.shelf.filter(e => !packs.installed[e.id]);
+    for (const e of missing) {
+      const p = { name: String(e.name || e.id).slice(0, 24), version: String(e.version || ''), description: String(e.description || '').slice(0, 120) };
+      const sw = (Array.isArray(e.swatches) ? e.swatches : []).filter(c => HEXLIKE.test(c)).slice(0, 8);
+      shelf.append(packRow(p, { swatches: sw, actions: [['install', b => installFromShelf(e, b, 'installed'), true]] }));
+    }
+    if (!missing.length) shelf.innerHTML = '<div class="pk-empty">you have every pack on the shelf.</div>';
+    state.textContent = 'shelf checked just now';
+  } else {
+    shelf.innerHTML = '<div class="pk-empty">' + (packs.shelfState === 'offline' ? 'shelf not reachable.' : 'checking the shelf…') + '</div>';
+    state.textContent = '';
+  }
+}
+function installFromShelf(entry, button, done) {
+  button.disabled = true;
+  fetchShelfPack(entry).then(raw => {
+    const r = installPack(raw);
+    if (!r.ok) { packsNote(entry.id + ': ' + r.error, true); button.disabled = false; return; }
+    packsNote(r.pack.name.toLowerCase() + ' ' + done + '. it\'s in the pack row.');
+    refreshCurrent(r.pack.id);
+    renderPacks();
+  }).catch(() => { packsNote("couldn't reach the shelf. try again later.", true); button.disabled = false; });
+}
+
+document.getElementById('btn-packs').addEventListener('click', openPacks);
+document.getElementById('btn-packs-close').addEventListener('click', closePacks);
+document.getElementById('packs-overlay').addEventListener('click', e => { if (e.target.id === 'packs-overlay') closePacks(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && packsOpen()) closePacks(); });
+document.getElementById('btn-pack-import').addEventListener('click', () => document.getElementById('pack-file').click());
+document.getElementById('pack-file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  f.text().then(raw => {
+    const r = installPack(raw);
+    if (!r.ok) { packsNote('not installed: ' + r.error, true); return; }
+    packsNote(r.pack.name.toLowerCase() + ' installed. it\'s in the pack row.');
+    refreshCurrent(r.pack.id);
+    renderPacks();
+  });
 });
 
 let importSlot = null;   // the custom theme the file picker is filling
@@ -5158,17 +5458,18 @@ function autosave() {
 
 // ── Settings persistence ──────────────────────────────────────────────
 function saveSettings() {
+  const legacy = legacyTheme();
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       version:      1,
-      theme:        document.getElementById('theme-select').value,
+      theme:        legacy.theme,
       font:         document.getElementById('settings-font-select').value,
       fontSize:     document.getElementById('settings-font-size-select').value,
       autohide:     autohideEnabled,
       showWelcome:  document.getElementById('chk-welcome').checked,
       crtEnabled:   document.body.classList.contains('crt-on'),
-      downpour:     document.body.classList.contains('downpour-on'),
-      rainStill:    document.body.classList.contains('rain-still'),
+      downpour:     legacy.downpour,
+      rainStill:    legacy.rainStill,
       scrollSynced: scrollSynced,
       customBg:      document.getElementById('color-bg').value,
       customText:    document.getElementById('color-text').value,
@@ -5205,6 +5506,7 @@ function saveSettings() {
     }));
   } catch(e) {}
   emitThemeChanged();
+  savePackState(legacySignature(Object.assign({ crtEnabled: document.body.classList.contains('crt-on') }, legacy)));
 }
 
 // Notify Ginkgo's chrome (topbar/drawer, outside this iframe) so it can
@@ -5220,6 +5522,11 @@ function emitThemeChanged() {
     const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     settings.amberCrt = document.body.classList.contains('amber-crt');
     settings.doogieJournal = document.body.classList.contains('doogie-journal');
+    // The six colors in use, whatever painted them (a built-in theme, a
+    // custom one or a pack), so Ginkgo's frame matches the editor exactly.
+    const cs = getComputedStyle(document.body);
+    settings.colors = {};
+    for (const k of ['bg', 'surface', 'text', 'accent', 'muted', 'border']) settings.colors[k] = cs.getPropertyValue('--' + k).trim();
     window.parent.postMessage({ type: 'THEME_CHANGED', settings }, location.origin);
   } catch(e) {}
 }
@@ -5230,8 +5537,6 @@ function loadSettings() {
     if (!raw) return;
     const s = JSON.parse(raw);
     if (s.theme !== undefined) {
-      document.getElementById('theme-select').value = s.theme;
-      document.body.dataset.theme = customSlot(s.theme) ? '' : (s.theme || 'parchment');
       if (s.customBg)      { document.getElementById('color-bg').value      = s.customBg;      document.getElementById('hex-bg').value      = s.customBg; }
       if (s.customText)    { document.getElementById('color-text').value    = s.customText;    document.getElementById('hex-text').value    = s.customText; }
       if (s.customAccent)  { document.getElementById('color-accent').value  = s.customAccent;  document.getElementById('hex-accent').value  = s.customAccent; }
@@ -5248,7 +5553,6 @@ function loadSettings() {
         syncReadable(slot);
       });
       syncCustomNames();
-      if (customSlot(s.theme)) applyCustomColors();
     }
     if (s.font) {
       document.getElementById('settings-font-select').value = s.font;
@@ -5265,18 +5569,6 @@ function loadSettings() {
     }
     if (s.showWelcome !== undefined) {
       document.getElementById('chk-welcome').checked = s.showWelcome;
-    }
-    if (s.crtEnabled) {
-      document.body.classList.add('crt-on');
-      document.getElementById('chk-crt').checked = true;
-    }
-    if (s.downpour) {
-      document.body.classList.add('downpour-on');
-      document.getElementById('chk-downpour').checked = true;
-    }
-    if (s.rainStill) {
-      document.body.classList.add('rain-still');
-      document.getElementById('chk-falling').checked = false;
     }
     if (s.scrollSynced !== undefined) {
       scrollSynced = s.scrollSynced;
@@ -5323,7 +5615,6 @@ function loadSettings() {
     if (s.calendarType) {
       document.getElementById('settings-calendar-type-select').value = s.calendarType;
     }
-    syncThemeUI();
     applyStatusBarVisibility();
   } catch(e) {}
 }
@@ -5573,66 +5864,6 @@ document.addEventListener('click', e => {
   if (!wordMenu.contains(e.target)) hideWordMenu();
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideWordMenu(); }, true);
-
-// ── Konami code (amber CRT easter egg) ───────────────────────────────
-const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
-let konamiPos = 0;
-document.addEventListener('keyup', e => {
-  if (e.key === KONAMI[konamiPos]) {
-    konamiPos++;
-    if (konamiPos === KONAMI.length) {
-      konamiPos = 0;
-      if (document.body.dataset.theme === 'terminal' && document.body.classList.contains('crt-on')) {
-        // Erase the 'ba' that was typed into the editor during the sequence
-        if (view && view.hasFocus) {
-          const cur = view.state.selection.main.from;
-          if (view.state.sliceDoc(Math.max(0, cur - 2), cur) === 'ba') {
-            view.dispatch({ changes: { from: cur - 2, to: cur, insert: '' }, userEvent: 'delete' });
-          }
-        }
-        const toAmber = !document.body.classList.contains('amber-crt');
-        document.body.classList.remove('doogie-journal');
-        document.body.classList.toggle('amber-crt');
-        if (document.getElementById('chk-welcome').checked) {
-          typeStatusMessage(toAmber ? 'amber mode. you found it.' : 'back to green.');
-        }
-        emitThemeChanged(); // amber isn't persisted (it's a session-only easter egg), so this is the only signal Ginkgo gets
-      }
-    }
-  } else {
-    konamiPos = e.key === KONAMI[0] ? 1 : 0;
-  }
-});
-
-// ── ABACABB (Doogie Journal easter egg) ───────────────────────────────
-const DOOGIE = ['a','b','a','c','a','b','b'];
-let doogiePos = 0;
-document.addEventListener('keyup', e => {
-  if (document.body.dataset.theme !== 'terminal' || !document.body.classList.contains('crt-on')) { doogiePos = 0; return; }
-  if (e.key.length !== 1) return;
-  const key = e.key.toLowerCase();
-  const cur = (view && view.hasFocus) ? view.state.selection.main.from : -1;
-  const onBlankLine = cur >= 0 && view.state.doc.lineAt(cur).text.trim().length <= DOOGIE.length;
-  if (onBlankLine && key === DOOGIE[doogiePos]) {
-    doogiePos++;
-    if (doogiePos === DOOGIE.length) {
-      doogiePos = 0;
-      const line = view.state.doc.lineAt(view.state.selection.main.from);
-      if (line.text.trim().toLowerCase() === 'abacabb') {
-        view.dispatch({ changes: { from: line.from, to: line.to, insert: '' }, userEvent: 'delete' });
-      }
-      const toDoogie = !document.body.classList.contains('doogie-journal');
-      document.body.classList.remove('amber-crt');
-      document.body.classList.toggle('doogie-journal', toDoogie);
-      if (document.getElementById('chk-welcome').checked) {
-        typeStatusMessage(toDoogie ? 'Doogie Journal Unlocked!' : 'back to green.');
-      }
-      emitThemeChanged(); // session-only easter egg, same as amber — this is the only signal Ginkgo gets
-    }
-  } else {
-    doogiePos = key === DOOGIE[0] ? 1 : 0;
-  }
-});
 
 // ── Just Write mode ───────────────────────────────────────────────────
 function currentWordCount() {
@@ -6525,7 +6756,15 @@ function init() {
   // is only ever loaded inside that shell's iframe.
 
   // Load settings first (sets theme, font, size before editor mounts)
+  // Read the saved settings before loading them: loading saves them back
+  // once, before the theme has been moved over to its pack.
+  try { packs.saved = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch(e) {}
   loadSettings();
+  loadPackStore();
+  restorePackState(packs.saved);
+  packs.restored = true;
+  syncThemeUI();
+  emitThemeChanged();   // Ginkgo's frame takes its colors from here
   setTimeout(askReadable, 1200);   // once the page has settled
   loadWpSettings();
 
@@ -6750,7 +6989,9 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'OPEN_PANEL') {
     if (justWriteActive) return;
     if (msg.panel === 'style') {
-      document.getElementById('quick-settings').classList.toggle('open');
+      const qs = document.getElementById('quick-settings');
+      qs.classList.toggle('open');
+      if (qs.classList.contains('open')) checkShelf();
     } else if (msg.panel === 'settings') {
       document.getElementById('settings-overlay').style.display = 'flex';
     } else if (msg.panel === 'shortcuts') {
