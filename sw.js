@@ -1,9 +1,10 @@
-const CACHE = 'ginkgo-v13';
+const CACHE = 'ginkgo-v14';
 const ASSETS = [
   '/ginkgo/',
   '/ginkgo/index.html',
   '/ginkgo/editor.html',
   '/ginkgo/spell.js',
+  '/ginkgo/packs.js',
   '/ginkgo/spell-words.txt',
   '/ginkgo/manifest.json',
   '/ginkgo/icon-192.png',

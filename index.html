@@ -711,7 +711,7 @@
   <div id="about-box">
     <img id="about-logo" src="plant.png" alt="Ginkgo logo">
     <div id="about-title">Ginkgo</div>
-    <div id="about-version">version 1.9.0</div>
+    <div id="about-version">version 2.0.0</div>
     <div id="about-desc">A local-first journal, with optional Dropbox sync.</div>
     <a id="about-coffee-link" href="https://buymeacoffee.com/dandanmian" target="_blank" rel="noopener noreferrer">buy me a coffee</a>
     <button id="btn-about-close">Close</button>
@@ -967,7 +967,12 @@ const DOOGIE_JOURNAL_PALETTE = { bg: '#0000AA', surface: '#0000AA', text: '#EAEA
 function applyTheme(settings) {
   if (!settings) return;
   let p;
-  if (['custom', 'custom2', 'custom3'].includes(settings.theme)) {
+  // Since 2.0 the editor sends the six colors in use (packs.js), whatever
+  // painted them; the rest is for settings saved by older versions.
+  const sent = settings.colors && settings.colors.bg ? settings.colors : null;
+  if (sent) {
+    p = sent;
+  } else if (['custom', 'custom2', 'custom3'].includes(settings.theme)) {
     const bg = settings[settings.theme + 'Bg'], text = settings[settings.theme + 'Text'], accent = settings[settings.theme + 'Accent'];
     p = { bg, surface: bg, text, accent, muted: accent, border: accent };
   } else {
@@ -975,9 +980,11 @@ function applyTheme(settings) {
   }
   const isAmber = settings.theme === 'terminal' && !!settings.amberCrt;
   const isDoogie = settings.theme === 'terminal' && !isAmber && !!settings.doogieJournal;
-  if (settings.theme === 'rain' && settings.downpour) p = { ...p, ...DOWNPOUR_PALETTE };
-  if (isAmber) p = { ...p, ...AMBER_CRT_PALETTE };
-  else if (isDoogie) p = { ...p, ...DOOGIE_JOURNAL_PALETTE };
+  if (!sent) {
+    if (settings.theme === 'rain' && settings.downpour) p = { ...p, ...DOWNPOUR_PALETTE };
+    if (isAmber) p = { ...p, ...AMBER_CRT_PALETTE };
+    else if (isDoogie) p = { ...p, ...DOOGIE_JOURNAL_PALETTE };
+  }
   const root = document.documentElement.style;
   ['bg', 'surface', 'text', 'accent', 'muted', 'border'].forEach(k => { if (p[k]) root.setProperty('--' + k, p[k]); });
   if (settings.font) root.setProperty('--ui-font', settings.font);
@@ -996,6 +1003,13 @@ let calendarType = 'minimal';
     const raw = localStorage.getItem('tree-editor-settings');
     if (raw) {
       const settings = JSON.parse(raw);
+      // A theme from a pack: its colors are remembered with the pack state,
+      // so the frame starts in them before the editor has loaded.
+      try {
+        const st = JSON.parse(localStorage.getItem('tree-pack-state') || 'null');
+        const m = st && st.remembered, c = st && st.current;
+        if (m && c && m.pack === c.pack && m.theme === c.theme && m.colors) settings.colors = m.colors;
+      } catch (e) {}
       applyTheme(settings);
       if (settings.calendarType) calendarType = settings.calendarType;
     }
