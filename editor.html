@@ -1456,6 +1456,7 @@
   .pk-btn:disabled { opacity: 0.4; cursor: default; }
   .pk-tag { color: var(--muted); white-space: nowrap; }
   .pk-empty { color: var(--muted); padding: 6px 0; }
+  .pk-desc.pk-bad { color: var(--accent); }
   #packs-note { min-height: 1.4em; margin-top: 10px; color: var(--muted); }
   #packs-note.bad { color: var(--accent); }
   .packs-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); }
@@ -4519,6 +4520,7 @@ const packs = {
   installed: {},                                 // id → pack from the shelf or a file
   seen: {},                                      // id → shelf version already shown as new
   shelf: null, shelfState: 'unchecked',          // the shelf's index.json, once fetched
+  shelfProblems: {},                             // shelf id → one-line reason it can't install
   current: { pack: 'classic', theme: 'parchment' },
   last: {},                                      // pack id → theme last used in it
   switches: {},                                  // 'pack/theme' → { label: on }
@@ -4706,7 +4708,15 @@ function checkShelf(force) {
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(idx => {
       if (!idx || idx.treePacks !== 1 || !Array.isArray(idx.packs)) throw new Error('index');
-      packs.shelf = idx.packs.filter(e => e && typeof e.id === 'string' && typeof e.file === 'string' && /^packs\/[a-z0-9-]+\.tree-pack\.json$/.test(e.file));
+      // Every listed pack shows. One the index lists in a way Ginkgo can't
+      // fetch shows with its reason instead of quietly disappearing.
+      packs.shelf = idx.packs.filter(e => e && typeof e === 'object').map(e => {
+        if (typeof e.id !== 'string' || !e.id) return Object.assign({}, e, { id: '?' + String(e.name || 'unnamed'), problem: 'the shelf lists it without an ID.' });
+        if (typeof e.file !== 'string' || !/^packs\/[a-z0-9-]+\.tree-pack\.json$/.test(e.file))
+          return Object.assign({}, e, { problem: "the shelf's file path for it isn't one Ginkgo can fetch." });
+        return e;
+      });
+      packs.shelfProblems = {};
       packs.shelfState = 'ok';
     })
     .catch(() => { packs.shelfState = 'offline'; shelfRequest = null; })
@@ -4722,7 +4732,7 @@ function shelfNews() {
   let n = 0;
   for (const e of packs.shelf || []) {
     const mine = packs.installed[e.id];
-    if (mine ? TreePacks.newer(mine.version, e.version) : packs.seen[e.id] !== e.version) n++;
+    if (mine ? !e.problem && TreePacks.newer(mine.version, e.version) : packs.seen[e.id] !== e.version) n++;
   }
   return n;
 }
@@ -4771,6 +4781,12 @@ function packRow(p, extra) {
     d.textContent = p.description;
     row.append(d);
   }
+  if (extra.problem) {
+    const d = document.createElement('span');
+    d.className = 'pk-desc pk-bad';
+    d.textContent = "can't install: " + extra.problem;
+    row.append(d);
+  }
   const strip = document.createElement('span');
   strip.className = 'pk-strip';
   for (const c of extra.swatches) { const i = document.createElement('i'); i.style.background = c; strip.append(i); }
@@ -4797,7 +4813,7 @@ function renderPacks() {
   for (const p of Object.values(packs.installed).sort((a, b) => a.name.localeCompare(b.name))) {
     const e = shelfEntry(p.id);
     const actions = [];
-    if (e && TreePacks.newer(p.version, e.version)) actions.push(['update', b => installFromShelf(e, b, 'updated'), true]);
+    if (e && !e.problem && TreePacks.newer(p.version, e.version)) actions.push(['update', b => installFromShelf(e, b, 'updated'), true]);
     else actions.push(['export', () => exportPack(p.id)]);
     actions.push(['uninstall', () => { if (justWriteActive) return; packsNote(uninstallPack(p.id)); renderPacks(); }]);
     mine.append(packRow(p, { swatches: p.themes.map(t => t.colors.bg), actions }));
@@ -4810,7 +4826,9 @@ function renderPacks() {
     for (const e of missing) {
       const p = { name: String(e.name || e.id).slice(0, 24), version: String(e.version || ''), description: String(e.description || '').slice(0, 120) };
       const sw = (Array.isArray(e.swatches) ? e.swatches : []).filter(c => HEXLIKE.test(c)).slice(0, 8);
-      shelf.append(packRow(p, { swatches: sw, actions: [['install', b => installFromShelf(e, b, 'installed'), true]] }));
+      const problem = e.problem || packs.shelfProblems[e.id];
+      shelf.append(packRow(p, { swatches: sw, problem,
+        actions: e.problem ? [] : [[problem ? 'try again' : 'install', b => installFromShelf(e, b, 'installed'), true]] }));
     }
     if (!missing.length) shelf.innerHTML = '<div class="pk-empty">you have every pack on the shelf.</div>';
     state.textContent = 'shelf checked just now';
@@ -4824,7 +4842,14 @@ function installFromShelf(entry, button, done) {
   button.disabled = true;
   fetchShelfPack(entry).then(raw => {
     const r = installPack(raw);
-    if (!r.ok) { packsNote(entry.id + ': ' + r.error, true); button.disabled = false; return; }
+    if (!r.ok) {
+      // Keep the reason on the pack's own row, not only in the note below.
+      packs.shelfProblems[entry.id] = r.error;
+      packsNote(entry.id + ': ' + r.error, true);
+      renderPacks();
+      return;
+    }
+    delete packs.shelfProblems[entry.id];
     packsNote(r.pack.name.toLowerCase() + ' ' + done + '. it\'s in the pack row.');
     refreshCurrent(r.pack.id);
     renderPacks();

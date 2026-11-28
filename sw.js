@@ -1,4 +1,4 @@
-const CACHE = 'ginkgo-v15';
+const CACHE = 'ginkgo-v16';
 const ASSETS = [
   '/ginkgo/',
   '/ginkgo/index.html',
@@ -30,6 +30,12 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+
+  // The pack shelf lives on this same origin (/tree-packs/). Caching it
+  // cache-first froze its index.json, so packs added to the shelf later
+  // never showed. Other apps' paths on this origin go to the network.
+  const url = new URL(e.request.url);
+  if (url.origin === self.location.origin && !url.pathname.startsWith('/ginkgo/')) return;
 
   // Network-first for HTML (index.html and editor.html) so deploys are visible immediately
   const isHTML = e.request.destination === 'document' ||
